@@ -15,6 +15,11 @@ export abstract class BaseService<T> {
     return this.getRepository().findOne({where: id});
   }
 
+  async findOneBy(query: any, relations: string[]): Promise<T> {
+    const entity = await this.getRepository().findOne({ where: query, relations });
+    return entity;
+  }
+
   async findAllBy(query: any, relations: string[]): Promise<T[]> {
     const entities = await this.getRepository().find({ where: query, relations });
     return entities;

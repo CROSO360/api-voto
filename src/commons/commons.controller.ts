@@ -1,4 +1,12 @@
-import { Body, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { BaseService } from './commons.service';
 
 export abstract class BaseController<T> {
@@ -15,12 +23,25 @@ export abstract class BaseController<T> {
     return await this.getService().findOne({ id });
   }
 
-  @Get('findAllBy')
-  async findAllBy(@Query() query?: any): Promise<T[]> {
-    const relations: string[] = query.relations ? query.relations.split(',') : [];
+  @Get('findOneBy')
+  async findOneBy(@Query() query?: any): Promise<T> {
+    const relations: string[] = query.relations
+      ? query.relations.split(',')
+      : [];
     const filteredQuery = { ...query };
     delete filteredQuery.relations;
-    
+
+    return await this.getService().findOneBy(filteredQuery, relations);
+  }
+
+  @Get('findAllBy')
+  async findAllBy(@Query() query?: any): Promise<T[]> {
+    const relations: string[] = query.relations
+      ? query.relations.split(',')
+      : [];
+    const filteredQuery = { ...query };
+    delete filteredQuery.relations;
+
     return await this.getService().findAllBy(filteredQuery, relations);
   }
 

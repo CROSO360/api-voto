@@ -25,12 +25,14 @@ export class Usuario {
   @JoinColumn({name: "id_grupo_usuario"})
   grupoUsuario: GrupoUsuario;
 
-  @OneToOne(() => Usuario)
-  @JoinColumn({name: "id_usuario"})
+  @ManyToOne(() => Usuario, usuario => usuario.usuarioReemplazo)
+  @JoinColumn({name: "id_usuario_reemplazo"})
   usuarioReemplazo: Usuario;
 
+  @Column()
   estado: boolean;
 
+  @Column()
   status: boolean;
 
 
