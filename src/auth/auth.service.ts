@@ -17,9 +17,9 @@ export class AuthService {
   
     // Verifica si se encontró un usuario y si las credenciales coinciden
     if (user && pass === user.contrasena && user.tipo === 'administrador') {
-      const { contrasena, ...result } = user;
+      const { contrasena, puntoUsuarios, codigo, usuarioReemplazo, grupoUsuario, ...result } = user;
   
-      const payload = { codigo: user.codigo };
+      const payload = { codigo: user.codigo, nombre: user.nombre };
       const token = await this.jwtService.signAsync(payload);
   
       return {
