@@ -29,7 +29,7 @@ import { AuthModule } from './auth/auth.module';
     PuntoUsuarioModule,
     UsuarioModule,
     GrupoUsuarioModule,
-    AuthModule
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
