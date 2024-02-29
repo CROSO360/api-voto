@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 @Module({
   imports:[TypeOrmModule.forFeature([Sesion])],
   providers: [SesionService],
-  controllers: [SesionController]
+  controllers: [SesionController],
+  exports: [SesionService, TypeOrmModule.forFeature([Sesion])]
 })
 export class SesionModule {}
