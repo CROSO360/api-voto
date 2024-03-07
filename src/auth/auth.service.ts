@@ -33,7 +33,7 @@ export class AuthService {
       };
     }
   
-    throw new UnauthorizedException('Credenciales incorrectas');
+    throw new UnauthorizedException('Credenciales de administrador incorrectas');
   }
 
   async validateVoter(codigo: string, cedula: string): Promise<any> {
@@ -56,44 +56,9 @@ export class AuthService {
       };
     }
   
-    throw new UnauthorizedException('Credenciales incorrectas');
+    throw new UnauthorizedException('Credenciales de votante incorrectas');
   }
 
-  /*async validarVoto(codigo: string, idUsuario: number, puntos: number[], opcion: string): Promise<any> {
-    const query = { codigo };
-    const relations = [];
-
-    let votos = [];
-    
-    const sesion = await this.sesionService.findOneBy(query, relations);
   
-    // Verifica si se encontró un usuario y si las credenciales coinciden
-    if (sesion && idUsuario && puntos && opcion) {
-      
-      puntos.forEach(async (e)=>{
-        let id_punto = e;
-        let query = { punto: { id_punto: id_punto }, usuario: { id_usuario: idUsuario } };
-        const relations = ['punto','usuario'];
-
-        const puntoUsuario = await this.puntoUsuarioService.findOneBy(query,relations);
-
-        let puntoUsuarioData: any = {
-          id_punto_usuario: puntoUsuario.id_punto_usuario,
-          opcion: opcion,
-        }
-
-        votos.push(puntoUsuarioData);
-
-        const voto = await this.puntoUsuarioService.save(puntoUsuarioData);
-        //this.websocketGateway.emitChange(voto.id_punto_usuario);
-
-      });
-
-      return votos;
-
-    }
-  
-    throw new UnauthorizedException('Credenciales incorrectas');
-  }*/
   
 }

@@ -45,7 +45,7 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario>{
     
         }
       
-        throw new UnauthorizedException('Credenciales incorrectas');
+        throw new UnauthorizedException('Campos del voto incorrectos');
       }
 
 }
