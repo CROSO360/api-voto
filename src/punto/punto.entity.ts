@@ -18,6 +18,24 @@ export class Punto {
   detalle: string;
 
   @Column()
+  n_afavor: string;
+
+  @Column({type: 'float'})
+  afavor: number;
+
+  @Column()
+  n_encontra: string;
+
+  @Column({type: 'float'})
+  encontra: number;
+
+  @Column()
+  n_abstinencia: string;
+
+  @Column({type: 'float'})
+  abstinencia: number;
+
+  @Column()
   estado: boolean;
 
   @Column()

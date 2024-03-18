@@ -9,7 +9,7 @@ export class GrupoUsuario {
   @Column()
   nombre: string;
 
-  @Column()
+  @Column({type: 'float'})
   peso: number;
 
   @Column()

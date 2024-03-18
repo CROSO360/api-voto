@@ -19,6 +19,9 @@ export class PuntoUsuario {
   opcion: string;
 
   @Column()
+  es_razonado: boolean;
+
+  @Column()
   es_principal: boolean;
 
   @Column()
