@@ -14,4 +14,6 @@ export class VotoDto {
   @IsOptional() // Marca el campo como opcional
   @IsIn(['afavor', 'encontra', 'abstinencia', null]) // Agrega null como una de las opciones permitidas
   opcion: string | null;
+
+  es_razonado: boolean;
 }

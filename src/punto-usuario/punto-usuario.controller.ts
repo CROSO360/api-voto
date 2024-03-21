@@ -28,6 +28,7 @@ export class PuntoUsuarioController extends BaseController<PuntoUsuario> {
       votoDto.id_usuario,
       votoDto.punto,
       votoDto.opcion,
+      votoDto.es_razonado,
     );
     this.websocketGateway.emitChange(sape);
   }

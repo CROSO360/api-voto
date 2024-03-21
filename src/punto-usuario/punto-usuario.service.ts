@@ -19,7 +19,7 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario>{
         return this.puntoUsuarioRepo;
     }
 
-    async validarVoto(codigo: string, idUsuario: number, punto: number, opcion: string | null): Promise<any> {
+    async validarVoto(codigo: string, idUsuario: number, punto: number, opcion: string | null, es_razonado: boolean): Promise<any> {
         const query = { codigo };
         const relations = [];
         
@@ -36,6 +36,7 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario>{
             let puntoUsuarioData: any = {
               id_punto_usuario: puntoUsuario.id_punto_usuario,
               opcion: opcion,
+              es_razonado: es_razonado
             }
     
             /*const voto = */await this.save(puntoUsuarioData);
