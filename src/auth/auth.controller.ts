@@ -25,6 +25,14 @@ export class AuthController {
     );
   }
 
+  @Post('voter-reemplazo-login')
+  async voterReemplazoLogin(@Body() userloginDto: UserLoginDto): Promise<any> {
+    return this.authService.validateVoterReemplazo(
+      userloginDto.codigo,
+      userloginDto.cedula,
+    );
+  }
+
   /*@Post('voto')
   //@UseGuards(AuthGuard)
   async voto(@Body() votoDto :VotoDto): Promise<any> {
