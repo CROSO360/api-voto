@@ -9,6 +9,16 @@ import { PuntoUsuarioModule } from './punto-usuario/punto-usuario.module';
 import { UsuarioModule } from './usuario/usuario.module';
 import { GrupoUsuarioModule } from './grupo-usuario/grupo-usuario.module';
 import { AuthModule } from './auth/auth.module';
+import { ResolucionController } from './resolucion/resolucion.controller';
+import { ResolucionService } from './resolucion/resolucion.service';
+import { ResolucionModule } from './resolucion/resolucion.module';
+import { AsistenciaModule } from './asistencia/asistencia.module';
+import { DocumentoModule } from './documento/documento.module';
+import { SesionDocumentoModule } from './sesion-documento/sesion-documento.module';
+import { MiembroModule } from './miembro/miembro.module';
+import { FacultadModule } from './facultad/facultad.module';
+import { AuditoriaModule } from './auditoria/auditoria.module';
+import { PuntoDocumentoModule } from './punto-documento/punto-documento.module';
 
 @Module({
   imports: [
@@ -21,7 +31,8 @@ import { AuthModule } from './auth/auth.module';
         username: process.env.DB_USERNAME,
         password: process.env.DB_PASSWORD,
         database:process.env.DB_NAME,
-        autoLoadEntities: true
+        autoLoadEntities: true,
+        //logging: true
       })
     }),
     SesionModule,
@@ -30,6 +41,14 @@ import { AuthModule } from './auth/auth.module';
     UsuarioModule,
     GrupoUsuarioModule,
     AuthModule,
+    ResolucionModule,
+    AsistenciaModule,
+    DocumentoModule,
+    SesionDocumentoModule,
+    PuntoDocumentoModule,
+    MiembroModule,
+    FacultadModule,
+    AuditoriaModule
   ],
   controllers: [AppController],
   providers: [AppService],

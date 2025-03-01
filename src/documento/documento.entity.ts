@@ -1,30 +1,22 @@
 import { Asistencia } from 'src/asistencia/asistencia.entity';
+import { PuntoDocumento } from 'src/punto-documento/punto-documento.entity';
 import { Punto } from 'src/punto/punto.entity';
 import { SesionDocumento } from 'src/sesion-documento/sesion-documento.entity';
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
 
 @Entity()
-export class Sesion {
+export class Documento {
   @PrimaryGeneratedColumn()
-  id_sesion: number;
+  id_documento: number;
 
   @Column()
   nombre: string;
 
   @Column()
-  codigo: string;
-
-  /*@Column()
-  oficio: string;*/
+  url: string;
 
   @Column()
-  fecha_inicio: Date;
-
-  @Column()
-  fecha_fin: Date;
-
-  @Column()
-  tipo: string;
+  fecha_subida: Date;
 
   @Column()
   estado: boolean;
@@ -33,12 +25,9 @@ export class Sesion {
   status: boolean;
 
 
-  @OneToMany(() => Punto, punto => punto.sesion)
-  puntos: Punto[];
-
-  @OneToMany(() => Asistencia, asistencia => asistencia.sesion)
-  asistencias: Asistencia[];
-
   @OneToMany(() => SesionDocumento, sesionDocumento => sesionDocumento.sesion)
   sesionDocumentos: SesionDocumento[];
+
+  @OneToMany(() => PuntoDocumento, puntoDocumento => puntoDocumento.punto)
+  puntoDocumentos: PuntoDocumento[];
 }

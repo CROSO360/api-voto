@@ -1,6 +1,8 @@
+import { PuntoDocumento } from 'src/punto-documento/punto-documento.entity';
 import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
+import { Resolucion } from 'src/resolucion/resolucion.entity';
 import { Sesion } from 'src/sesion/sesion.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, OneToOne } from 'typeorm';
 
 @Entity()
 export class Punto {
@@ -21,19 +23,19 @@ export class Punto {
   n_afavor: string;
 
   @Column({type: 'float'})
-  afavor: number;
+  p_afavor: number;
 
   @Column()
   n_encontra: string;
 
   @Column({type: 'float'})
-  encontra: number;
+  p_encontra: number;
 
   @Column()
-  n_abstinencia: string;
+  n_abstencion: string;
 
   @Column({type: 'float'})
-  abstinencia: number;
+  p_abstencion: number;
 
   @Column()
   estado: boolean;
@@ -44,4 +46,10 @@ export class Punto {
 
   @OneToMany(() => PuntoUsuario, puntoUsuario => puntoUsuario.punto)
   puntoUsuarios: PuntoUsuario[];
+
+  @OneToMany(() => PuntoDocumento, puntoDocumento => puntoDocumento.punto)
+    puntoDocumentos: PuntoDocumento[];
+
+  @OneToOne(() => Resolucion, resolucion => resolucion.punto)
+  resolucion: Resolucion;
 }

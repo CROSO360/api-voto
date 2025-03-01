@@ -1,6 +1,23 @@
+import { Asistencia } from 'src/asistencia/asistencia.entity';
 import { GrupoUsuario } from 'src/grupo-usuario/grupo-usuario.entity';
 import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToOne, JoinColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  OneToOne,
+  JoinColumn,
+  OneToMany,
+  BeforeInsert,
+  BeforeUpdate,
+} from 'typeorm';
+import * as CryptoJS from 'crypto-js';
+import * as bcrypt from 'bcrypt';
+import { Miembro } from 'src/miembro/miembro.entity';
+import { Facultad } from 'src/facultad/facultad.entity';
+import { Auditoria } from 'src/auditoria/auditoria.entity';
+
 @Entity()
 export class Usuario {
   @PrimaryGeneratedColumn()
@@ -13,21 +30,28 @@ export class Usuario {
   codigo: string;
 
   @Column()
-  contrasena: string;
+  cedula: string; // Ahora es pública y se maneja directamente
 
   @Column()
-  cedula: string;
+  contrasena: string; // encriptar
 
   @Column()
   tipo: string;
 
-  @ManyToOne(() => GrupoUsuario, grupoUsuario => grupoUsuario.usuarios)
-  @JoinColumn({name: "id_grupo_usuario"})
+  @ManyToOne(() => GrupoUsuario, (grupoUsuario) => grupoUsuario.usuarios)
+  @JoinColumn({ name: 'id_grupo_usuario' })
   grupoUsuario: GrupoUsuario;
 
-  @ManyToOne(() => Usuario, usuario => usuario.usuarioReemplazo)
-  @JoinColumn({name: "id_usuario_reemplazo"})
+  @ManyToOne(() => Usuario, (usuario) => usuario.usuarioReemplazo)
+  @JoinColumn({ name: 'id_usuario_reemplazo' })
   usuarioReemplazo: Usuario;
+
+  @ManyToOne(() => Facultad, (facultad) => facultad.usuarios)
+  @JoinColumn({ name: 'id_facultad' })
+  facultad: Facultad;
+
+  @Column()
+  es_reemplazo: boolean;
 
   @Column()
   estado: boolean;
@@ -35,8 +59,44 @@ export class Usuario {
   @Column()
   status: boolean;
 
-
-  @OneToMany(() => PuntoUsuario, puntoUsuario => puntoUsuario.usuario)
+  @OneToMany(() => PuntoUsuario, (puntoUsuario) => puntoUsuario.usuario)
   puntoUsuarios: PuntoUsuario[];
+
+  @OneToMany(() => Asistencia, (asistencia) => asistencia.usuario)
+  asistencias: Asistencia[];
+
+  @OneToMany(() => Miembro, (miembro) => miembro.usuario)
+  miembros: Miembro[];
+
+  @OneToMany(() => Auditoria, (auditoria) => auditoria.usuario)
+  auditorias: Auditoria[];
+
+  // Clave secreta para el cifrado AES (debe estar en un archivo .env)
+  //private static encryptionKey = process.env.ENCRYPTION_KEY;
+
+  /*private static encryptionKey = (() => {
+    const key = process.env.ENCRYPTION_KEY;
+    if (!key) {
+      throw new Error("ENCRYPTION_KEY no está definida en el entorno.");
+    }
+    return key;
+  })();*/
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  async hashFields() {
+    const encryptionKey = process.env.ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error("ENCRYPTION_KEY no está definida en el entorno.");
+    }
+
+    if (this.contrasena) {
+      this.contrasena = await bcrypt.hash(this.contrasena, 10);
+    }
+
+    if (this.cedula) {
+      this.cedula = CryptoJS.AES.encrypt(this.cedula, encryptionKey).toString();
+    }
+  }
 
 }

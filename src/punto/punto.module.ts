@@ -7,6 +7,7 @@ import { Punto } from './punto.entity';
 @Module({
   imports:[TypeOrmModule.forFeature([Punto])],
   providers: [PuntoService],
-  controllers: [PuntoController]
+  controllers: [PuntoController],
+  exports: [PuntoService]
 })
 export class PuntoModule {}

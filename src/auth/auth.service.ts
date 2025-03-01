@@ -4,6 +4,8 @@ import { PuntoUsuarioService } from 'src/punto-usuario/punto-usuario.service';
 import { Punto } from 'src/punto/punto.entity';
 import { SesionService } from 'src/sesion/sesion.service';
 import { UsuarioService } from 'src/usuario/usuario.service';
+import * as bcrypt from 'bcrypt';
+import * as CryptoJS from 'crypto-js';
 
 @Injectable()
 export class AuthService {
@@ -16,63 +18,83 @@ export class AuthService {
 
   async validateUser(codigo: string, pass: string): Promise<any> {
     const query = { codigo };
-    const relations = ['usuarioReemplazo', 'grupoUsuario']; // Define tus relaciones aquí si las necesitas
+    const relations = ['usuarioReemplazo', 'grupoUsuario'];
 
-    const user = await this.usuarioService.findOneBy(query, relations);
+    let user = await this.usuarioService.findOneBy(query, relations);
 
-    // Verifica si se encontró un usuario y si las credenciales coinciden
-    if (user && pass === user.contrasena && user.tipo === 'administrador') {
-      const {
-        contrasena,
-        puntoUsuarios,
-        codigo,
-        usuarioReemplazo,
-        grupoUsuario,
-        ...result
-      } = user;
+    console.log('Usuario encontrado en BD:', user); // Verifica si la contraseña se está obteniendo
 
-      const payload = { codigo: user.codigo, nombre: user.nombre };
-      const token = await this.jwtService.signAsync(payload);
-
-      return {
-        token,
-        result,
-      };
+    if (!user) {
+        throw new UnauthorizedException('Usuario no encontrado');
     }
 
-    throw new UnauthorizedException(
-      'Credenciales de administrador incorrectas',
-    );
-  }
+    // Verificar que la contraseña no sea null antes de comparar
+    if (!user.contrasena) {
+        console.error('Contraseña en BD es NULL o no fue recuperada:', user);
+        throw new UnauthorizedException('El usuario no tiene contraseña almacenada');
+    }
+
+    const isPasswordValid = await bcrypt.compare(pass, user.contrasena);
+
+    if (isPasswordValid && user.tipo === 'administrador') {
+        const {
+            contrasena,
+            puntoUsuarios,
+            codigo,
+            usuarioReemplazo,
+            grupoUsuario,
+            ...result
+        } = user;
+
+        const payload = { codigo: user.codigo, nombre: user.nombre };
+        const token = await this.jwtService.signAsync(payload);
+
+        return {
+            token,
+            result,
+        };
+    }
+
+    throw new UnauthorizedException('Credenciales de administrador incorrectas');
+}
+
 
   async validateVoter(codigo: string, cedula: string): Promise<any> {
     const query = { codigo };
-    const relations = ['usuarioReemplazo', 'grupoUsuario']; // Define tus relaciones aquí si las necesitas
+    const relations = ['usuarioReemplazo', 'grupoUsuario'];
 
     const user = await this.usuarioService.findOneBy(query, relations);
 
-    // Verifica si se encontró un usuario y si las credenciales coinciden
-    if (user && cedula === user.cedula && user.tipo === 'votante') {
-      const {
-        contrasena,
-        puntoUsuarios,
-        codigo,
-        usuarioReemplazo,
-        grupoUsuario,
-        ...result
-      } = user;
+    if (user && user.tipo === 'votante') {
+      // Desencriptar la cédula almacenada con AES
+      const decryptedBytes = CryptoJS.AES.decrypt(
+        user.cedula,
+        process.env.ENCRYPTION_KEY || 'clave-secreta',
+      );
+      const decryptedCedula = decryptedBytes.toString(CryptoJS.enc.Utf8);
 
-      const payload = {
-        id: user.id_usuario,
-        codigo: user.codigo,
-        nombre: user.nombre,
-      };
-      const token = await this.jwtService.signAsync(payload);
+      if (decryptedCedula === cedula) {
+        const {
+          contrasena,
+          puntoUsuarios,
+          codigo,
+          usuarioReemplazo,
+          grupoUsuario,
+          ...result
+        } = user;
 
-      return {
-        token,
-        result,
-      };
+        const payload = {
+          id: user.id_usuario,
+          codigo: user.codigo,
+          nombre: user.nombre,
+        };
+        const token = await this.jwtService.signAsync(payload);
+
+        return {
+          token,
+          result,
+        };
+      }
     }
 
     throw new UnauthorizedException('Credenciales de votante incorrectas');
@@ -80,46 +102,50 @@ export class AuthService {
 
   async validateVoterReemplazo(codigo: string, cedula: string): Promise<any> {
     const query = { codigo };
-    const relations = ['grupoUsuario']; // Cargar solo las relaciones necesarias
-  
-    // Buscar al usuario que intenta iniciar sesión
+    const relations = ['grupoUsuario'];
+
     const user = await this.usuarioService.findOneBy(query, relations);
-  
-    // Validar que las credenciales sean correctas
-    if (user && cedula === user.cedula && user.tipo === 'votante') {
-      // Buscar si este usuario es el reemplazo de otro usuario (usuario principal)
-      const usuarioPrincipal = await this.usuarioService.findOneBy(
-        { usuarioReemplazo: user }, // Aquí buscamos al usuario principal que tiene a este usuario como reemplazo
-        relations
+
+    if (user && user.tipo === 'votante') {
+      // Desencriptar la cédula almacenada con AES
+      const decryptedBytes = CryptoJS.AES.decrypt(
+        user.cedula,
+        process.env.ENCRYPTION_KEY || 'clave-secreta',
       );
-  
-      // Si no es reemplazo de nadie, lanzar una excepción
-      if (!usuarioPrincipal) {
-        throw new UnauthorizedException('El usuario no es un reemplazo de ningún otro usuario.');
+      const decryptedCedula = decryptedBytes.toString(CryptoJS.enc.Utf8);
+
+      if (decryptedCedula === cedula) {
+        const usuarioPrincipal = await this.usuarioService.findOneBy(
+          { usuarioReemplazo: user },
+          relations,
+        );
+
+        if (!usuarioPrincipal) {
+          throw new UnauthorizedException(
+            'El usuario no es un reemplazo de ningún otro usuario.',
+          );
+        }
+
+        const payload = {
+          id: user.id_usuario,
+          codigo: user.codigo,
+          nombre: user.nombre,
+          id_principal: usuarioPrincipal.id_usuario,
+          nombre_principal: usuarioPrincipal.nombre,
+        };
+
+        const token = await this.jwtService.signAsync(payload);
+
+        return {
+          token,
+          result: {
+            ...user,
+            principal: usuarioPrincipal,
+          },
+        };
       }
-  
-      // Si es reemplazo, generar el token con la información del usuario y su principal
-      const payload = {
-        id: user.id_usuario,
-        codigo: user.codigo,
-        nombre: user.nombre,
-        id_principal: usuarioPrincipal.id_usuario, // Incluir el ID del usuario principal
-        nombre_principal: usuarioPrincipal.nombre, // Incluir el nombre del usuario principal
-      };
-  
-      const token = await this.jwtService.signAsync(payload);
-  
-      return {
-        token,
-        result: {
-          ...user, // Información del usuario reemplazo
-          principal: usuarioPrincipal, // Información del usuario principal
-        },
-      };
     }
-  
-    // Si las credenciales son incorrectas, lanzar una excepción
+
     throw new UnauthorizedException('Credenciales de votante incorrectas');
   }
-  
 }

@@ -25,6 +25,9 @@ export class PuntoUsuario {
   es_principal: boolean;
 
   @Column()
+  fecha: Date;
+
+  @Column()
   estado: boolean;
 
   @Column()

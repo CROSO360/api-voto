@@ -2,17 +2,57 @@ import { Injectable } from '@nestjs/common';
 import { Punto } from './punto.entity';
 import { BaseService } from 'src/commons/commons.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindManyOptions, Repository } from 'typeorm';
 
 @Injectable()
-export class PuntoService extends BaseService<Punto> {
+export class PuntoService  {
   constructor(@InjectRepository(Punto) private puntoRepo: Repository<Punto>) {
-    super();
   }
 
   getRepository(): Repository<Punto> {
     return this.puntoRepo;
   }
+
+
+  async findAll(relations: string[] = []): Promise<Punto[]> {
+      const options: FindManyOptions<Punto> = {};
+      if (relations.length > 0) {
+        options.relations = relations;
+      }
+      return this.getRepository().find(options);
+    }
+  
+    findOne(id: any): Promise<Punto> {
+      return this.getRepository().findOne({where: id});
+    }
+  
+    async findOneBy(query: any, relations: string[]): Promise<Punto> {
+      const entity = await this.getRepository().findOne({ where: query, relations });
+      return entity;
+    }
+  
+    async findAllBy(query: any, relations: string[]): Promise<Punto[]> {
+      const entities = await this.getRepository().find({ where: query, relations });
+      return entities;
+    }
+  
+    save(entity: Punto): Promise<Punto> {
+      return this.getRepository().save(entity);
+    }
+  
+    saveMany(entities: Punto[]): Promise<Punto[]> {
+      return this.getRepository().save(entities);
+    }
+  
+    async delete(id: any) {
+      await this.getRepository().delete(id);
+    }
+  
+    count(options?: FindManyOptions<Punto>): Promise<number> {
+      return this.getRepository().count(options);
+    }
+
+
 
   async getResultadosPunto(idPunto: number): Promise<any> {
     const query = `
