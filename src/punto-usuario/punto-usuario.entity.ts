@@ -21,6 +21,10 @@ export class PuntoUsuario {
   @Column()
   es_razonado: boolean;
 
+  @ManyToOne(() => Usuario, votante => votante.votosEmitidos)
+  @JoinColumn({ name: 'votante' })
+  votante: Usuario;
+
   @Column()
   es_principal: boolean;
 

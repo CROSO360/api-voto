@@ -71,16 +71,8 @@ export class Usuario {
   @OneToMany(() => Auditoria, (auditoria) => auditoria.usuario)
   auditorias: Auditoria[];
 
-  // Clave secreta para el cifrado AES (debe estar en un archivo .env)
-  //private static encryptionKey = process.env.ENCRYPTION_KEY;
-
-  /*private static encryptionKey = (() => {
-    const key = process.env.ENCRYPTION_KEY;
-    if (!key) {
-      throw new Error("ENCRYPTION_KEY no está definida en el entorno.");
-    }
-    return key;
-  })();*/
+  @OneToMany(() => PuntoUsuario, (puntoUsuario) => puntoUsuario.votante)
+  votosEmitidos: PuntoUsuario[];
 
   @BeforeInsert()
   @BeforeUpdate()

@@ -30,10 +30,13 @@ export class Resolucion {
   fecha: Date;
 
   @Column()
+  voto_manual: boolean;
+
+  @Column()
   estado: boolean;
 
   @Column()
-  staus: boolean;
+  status: boolean;
 
 
   @OneToMany(() => Auditoria, (auditoria) => auditoria.resolucion)

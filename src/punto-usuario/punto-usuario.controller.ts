@@ -20,6 +20,17 @@ export class PuntoUsuarioController extends BaseController<PuntoUsuario> {
     return this.puntoUsuarioService;
   }
 
+  @Post('generar-puntovoto/:idSesion')
+  async generarPorSesion(@Param('idSesion') idSesion: number) {
+    return this.puntoUsuarioService.generarVotacionesPorSesion(idSesion);
+  }
+
+  @Post('eliminar-puntovoto/:idSesion')
+async eliminarPorSesion(@Param('idSesion') idSesion: number) {
+  return this.puntoUsuarioService.eliminarVotacionesPorSesion(idSesion);
+}
+
+
   @Post('voto')
   @UseGuards(AuthGuard)
   async voto(@Body() votoDto: VotoDto) {

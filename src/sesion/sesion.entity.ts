@@ -27,6 +27,9 @@ export class Sesion {
   tipo: string;
 
   @Column()
+  fase: string;
+
+  @Column()
   estado: boolean;
 
   @Column()

@@ -1,14 +1,24 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { BaseController } from 'src/commons/commons.controller';
 import { PuntoService } from './punto.service';
 import { BaseService } from 'src/commons/commons.service';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { Punto } from './punto.entity';
+import { CreatePuntoDto } from 'src/auth/dto/create-punto.dto';
 
 @Controller('punto')
 export class PuntoController {
   constructor(private readonly puntoService: PuntoService) {}
-
 
   @Get('all')
   @UseGuards(AuthGuard)
@@ -61,18 +71,32 @@ export class PuntoController {
     return await this.puntoService.saveMany(entities);
   }
 
-  @Post('delete/:id')
-  @UseGuards(AuthGuard)
-  @HttpCode(HttpStatus.OK)
-  async delete(@Param('id') id: any) {
-    return this.puntoService.delete(id);
-  }
-
   @Get('count')
   @UseGuards(AuthGuard)
   async count(): Promise<number> {
     return await this.puntoService.count();
   }
+
+  @Post('crear')
+  @UseGuards(AuthGuard) // Protege el endpoint con autenticación
+  @HttpCode(HttpStatus.CREATED)
+  async crearPunto(@Body() createPuntoDto: CreatePuntoDto) {
+    return await this.puntoService.crearPunto(createPuntoDto);
+  }
+
+  @Post('eliminar/:id')
+  @UseGuards(AuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async eliminarPunto(@Param('id') idPunto: number) {
+    return await this.puntoService.eliminarPunto(idPunto);
+  }
+
+  @Post('reordenar')
+  @UseGuards(AuthGuard)
+  async moverPunto(@Body() body: { idPunto: number; posicionInicial: number; posicionFinal: number }) {
+    return await this.puntoService.reordenarPunto(body.idPunto, body.posicionInicial, body.posicionFinal);
+  }
+
 
   @Get('resultado/:idPunto')
   @UseGuards(AuthGuard)

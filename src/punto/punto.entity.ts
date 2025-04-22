@@ -19,23 +19,32 @@ export class Punto {
   @Column()
   detalle: string;
 
+  @Column({ type: 'int' })
+  orden: number;
+
   @Column()
-  n_afavor: string;
+  es_administrativa: boolean;
+
+  @Column()
+  n_afavor: number;
 
   @Column({type: 'float'})
   p_afavor: number;
 
   @Column()
-  n_encontra: string;
+  n_encontra: number;
 
   @Column({type: 'float'})
   p_encontra: number;
 
   @Column()
-  n_abstencion: string;
+  n_abstencion: number;
 
   @Column({type: 'float'})
   p_abstencion: number;
+
+  @Column()
+  resultado: string;
 
   @Column()
   estado: boolean;
