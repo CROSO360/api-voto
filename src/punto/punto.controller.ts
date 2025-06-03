@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseIntPipe,
   Post,
   Query,
   UseGuards,
@@ -15,6 +16,7 @@ import { BaseService } from 'src/commons/commons.service';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { Punto } from './punto.entity';
 import { CreatePuntoDto } from 'src/auth/dto/create-punto.dto';
+import { ResultadoManualDto } from 'src/auth/dto/resultado-manual.dto';
 
 @Controller('punto')
 export class PuntoController {
@@ -93,10 +95,34 @@ export class PuntoController {
 
   @Post('reordenar')
   @UseGuards(AuthGuard)
-  async moverPunto(@Body() body: { idPunto: number; posicionInicial: number; posicionFinal: number }) {
-    return await this.puntoService.reordenarPunto(body.idPunto, body.posicionInicial, body.posicionFinal);
+  async moverPunto(
+    @Body()
+    body: {
+      idPunto: number;
+      posicionInicial: number;
+      posicionFinal: number;
+    },
+  ) {
+    return await this.puntoService.reordenarPunto(
+      body.idPunto,
+      body.posicionInicial,
+      body.posicionFinal,
+    );
   }
 
+  @Post('calcular-resultados/:id')
+  async calcularResultados(@Param('id', ParseIntPipe) id: number) {
+    await this.puntoService.calcularResultados(id);
+    return { message: 'Resultados actualizados correctamente' };
+  }
+
+  @Post('resultado-manual')
+  @UseGuards(AuthGuard)
+  async registrarResultadoManual(@Body() dto: ResultadoManualDto) {
+    await this.puntoService.calcularResultadosManual(dto);
+  }
+
+  //------------------------------------------------------
 
   @Get('resultado/:idPunto')
   @UseGuards(AuthGuard)

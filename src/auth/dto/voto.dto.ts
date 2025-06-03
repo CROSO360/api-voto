@@ -1,18 +1,22 @@
-import { IsIn, IsOptional, IsString } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString } from "class-validator";
 import { Punto } from "src/punto/punto.entity";
 
 export class VotoDto {
+  @IsNumber()
+  id_usuario: number;
 
-  id_usuario: number;  
+  @IsNumber()
+  votante: number;
 
   @IsString()
   codigo: string;
 
+  @IsNumber()
   punto: number;
 
   @IsString()
-  @IsOptional() // Marca el campo como opcional
-  @IsIn(['afavor', 'encontra', 'abstinencia', null]) // Agrega null como una de las opciones permitidas
+  @IsOptional()
+  @IsIn(['afavor', 'encontra', 'abstencion', null])
   opcion: string | null;
 
   es_razonado: boolean;

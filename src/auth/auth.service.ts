@@ -67,13 +67,14 @@ export class AuthService {
 
     if (user && user.tipo === 'votante') {
       // Desencriptar la cédula almacenada con AES
-      const decryptedBytes = CryptoJS.AES.decrypt(
+      /*const decryptedBytes = CryptoJS.AES.decrypt(
         user.cedula,
-        process.env.ENCRYPTION_KEY || 'clave-secreta',
+        process.env.ENCRYPTION_KEY //|| 'clave-secreta',
       );
-      const decryptedCedula = decryptedBytes.toString(CryptoJS.enc.Utf8);
 
-      if (decryptedCedula === cedula) {
+      const decryptedCedula = decryptedBytes.toString(CryptoJS.enc.Utf8);*/
+
+      if (/*decryptedCedula*/user.cedula === cedula) {
         const {
           contrasena,
           puntoUsuarios,
@@ -103,29 +104,20 @@ export class AuthService {
   async validateVoterReemplazo(codigo: string, cedula: string): Promise<any> {
     const query = { codigo };
     const relations = ['grupoUsuario'];
-
+  
     const user = await this.usuarioService.findOneBy(query, relations);
-
+  
     if (user && user.tipo === 'votante') {
-      // Desencriptar la cédula almacenada con AES
-      const decryptedBytes = CryptoJS.AES.decrypt(
-        user.cedula,
-        process.env.ENCRYPTION_KEY || 'clave-secreta',
-      );
-      const decryptedCedula = decryptedBytes.toString(CryptoJS.enc.Utf8);
-
-      if (decryptedCedula === cedula) {
-        const usuarioPrincipal = await this.usuarioService.findOneBy(
-          { usuarioReemplazo: user },
-          relations,
-        );
+      if (user.cedula === cedula) {
+        // Corregido: ahora busca al usuario que tiene a este como reemplazo
+        const usuarioPrincipal = await this.usuarioService.getUsuarioPrincipalPorReemplazo(user.id_usuario);
 
         if (!usuarioPrincipal) {
           throw new UnauthorizedException(
             'El usuario no es un reemplazo de ningún otro usuario.',
           );
         }
-
+  
         const payload = {
           id: user.id_usuario,
           codigo: user.codigo,
@@ -133,9 +125,9 @@ export class AuthService {
           id_principal: usuarioPrincipal.id_usuario,
           nombre_principal: usuarioPrincipal.nombre,
         };
-
+  
         const token = await this.jwtService.signAsync(payload);
-
+  
         return {
           token,
           result: {
@@ -145,7 +137,9 @@ export class AuthService {
         };
       }
     }
-
+  
     throw new UnauthorizedException('Credenciales de votante incorrectas');
   }
+  
+  
 }

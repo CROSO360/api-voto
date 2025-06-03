@@ -13,6 +13,6 @@ import { Miembro } from 'src/miembro/miembro.entity';
   imports:[TypeOrmModule.forFeature([PuntoUsuario, Punto, Miembro]), SesionModule],
   providers: [PuntoUsuarioService, WebsocketGateway,SesionModule],
   controllers: [PuntoUsuarioController],
-  exports: [PuntoUsuarioService]
+  exports: [PuntoUsuarioService, TypeOrmModule.forFeature([PuntoUsuario])],
 })
 export class PuntoUsuarioModule {}

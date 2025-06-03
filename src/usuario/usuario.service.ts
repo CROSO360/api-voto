@@ -31,7 +31,14 @@ export class UsuarioService {
     const options: any = {
       where: query,
       relations: relations.length ? relations : undefined,
-      select: ['id_usuario', 'nombre', 'codigo', 'contrasena', 'tipo', 'cedula'], // Asegurar que incluimos la contraseña
+      select: [
+        'id_usuario',
+        'nombre',
+        'codigo',
+        'contrasena',
+        'tipo',
+        'cedula',
+      ], // Asegurar que incluimos la contraseña
     };
 
     const user = await this.usuarioRepo.findOne(options);
@@ -132,19 +139,23 @@ export class UsuarioService {
     });
 
     // Procesar si el usuario ya tiene un reemplazo asignado
-    const tieneReemplazo = usuario.usuarioReemplazo ? await this.processUser(usuario.usuarioReemplazo) : null;
-    const esReemplazoDe = usuarioPrincipal ? await this.processUser(usuarioPrincipal) : null;
+    const tieneReemplazo = usuario.usuarioReemplazo
+      ? await this.processUser(usuario.usuarioReemplazo)
+      : null;
+    const esReemplazoDe = usuarioPrincipal
+      ? await this.processUser(usuarioPrincipal)
+      : null;
 
     // Si el usuario es reemplazo de otro, no mostramos disponibles
     if (esReemplazoDe) {
-        return { disponibles: [], reemplazo: tieneReemplazo, esReemplazoDe };
+      return { disponibles: [], reemplazo: tieneReemplazo, esReemplazoDe };
     }
 
     // **Optimización: Obtener usuarios que ya están asignados como reemplazo y tienen reemplazo en UNA SOLA CONSULTA**
     const usuariosConReemplazo = await this.usuarioRepo.find({
-        where: { usuarioReemplazo: Not(IsNull()) },
-        select: ['id_usuario', 'usuarioReemplazo'],
-        relations: ['usuarioReemplazo'],
+      where: { usuarioReemplazo: Not(IsNull()) },
+      select: ['id_usuario', 'usuarioReemplazo'],
+      relations: ['usuarioReemplazo'],
     });
 
     // Extraer IDs de usuarios con reemplazo o que ya son reemplazo de alguien
@@ -152,41 +163,59 @@ export class UsuarioService {
     const idsUsuariosConReemplazo = new Set<number>();
 
     for (const user of usuariosConReemplazo) {
-        if (user.usuarioReemplazo) {
-            idsUsuariosYaAsignados.add(user.usuarioReemplazo.id_usuario);
-            idsUsuariosConReemplazo.add(user.id_usuario);
-        }
+      if (user.usuarioReemplazo) {
+        idsUsuariosYaAsignados.add(user.usuarioReemplazo.id_usuario);
+        idsUsuariosConReemplazo.add(user.id_usuario);
+      }
     }
 
     // **Nueva lógica de exclusión**
     // No excluimos al reemplazo actual del usuario
-    const idsExcluidos = new Set<number>([idUsuario, ...idsUsuariosYaAsignados, ...idsUsuariosConReemplazo]);
+    const idsExcluidos = new Set<number>([
+      idUsuario,
+      ...idsUsuariosYaAsignados,
+      ...idsUsuariosConReemplazo,
+    ]);
     if (usuario.usuarioReemplazo) {
-        idsExcluidos.delete(usuario.usuarioReemplazo.id_usuario);
+      idsExcluidos.delete(usuario.usuarioReemplazo.id_usuario);
     }
 
     // Determinar el grupo de reemplazos disponibles
     let grupoReemplazoId = usuario.grupoUsuario.id_grupo_usuario;
     if (usuario.grupoUsuario.id_grupo_usuario === 1) {
-        grupoReemplazoId = 2; // Si es Rector, los reemplazos son los Vicerrectores
+      grupoReemplazoId = 2; // Si es Rector, los reemplazos son los Vicerrectores
     }
 
     // **Optimización: Filtrar usuarios elegibles en UNA SOLA CONSULTA**
     const disponibles = await this.usuarioRepo.find({
-        where: {
-            grupoUsuario: { id_grupo_usuario: grupoReemplazoId },
-            id_usuario: Not(In([...idsExcluidos])),
-        },
-        relations: ['grupoUsuario'],
+      where: {
+        grupoUsuario: { id_grupo_usuario: grupoReemplazoId },
+        id_usuario: Not(In([...idsExcluidos])),
+      },
+      relations: ['grupoUsuario'],
     });
 
     return {
-        disponibles: await Promise.all(disponibles.map((user) => this.processUser(user))),
-        reemplazo: tieneReemplazo,
-        esReemplazoDe: esReemplazoDe,
+      disponibles: await Promise.all(
+        disponibles.map((user) => this.processUser(user)),
+      ),
+      reemplazo: tieneReemplazo,
+      esReemplazoDe: esReemplazoDe,
     };
-}
+  }
 
+  async getUsuarioPrincipalPorReemplazo(idUsuarioReemplazo: number): Promise<Usuario | null> {
+    const raw = await this.usuarioRepo.query(
+      `SELECT * FROM usuario WHERE id_usuario_reemplazo = ? AND tipo = 'votante' AND estado = 1 AND status = 1 LIMIT 1`,
+      [idUsuarioReemplazo],
+    );
 
+    if (!raw.length) return null;
+
+    return await this.usuarioRepo.findOne({
+      where: { id_usuario: raw[0].id_usuario },
+      relations: ['grupoUsuario'], // Puedes parametrizar si deseas
+    });
+  }
 
 }

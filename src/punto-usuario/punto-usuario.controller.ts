@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
 import { PuntoUsuario } from './punto-usuario.entity';
 import { BaseController } from 'src/commons/commons.controller';
 import { BaseService } from 'src/commons/commons.service';
@@ -32,15 +32,29 @@ async eliminarPorSesion(@Param('idSesion') idSesion: number) {
 
 
   @Post('voto')
+@UseGuards(AuthGuard)
+async voto(@Body() votoDto: VotoDto) {
+  const idPU = await this.puntoUsuarioService.validarVoto(
+    votoDto.codigo,
+    votoDto.id_usuario,
+    votoDto.punto,
+    votoDto.opcion,
+    votoDto.es_razonado,
+    votoDto.votante
+  );
+
+  this.websocketGateway.emitChange(idPU);
+}
+
+
+  @Post('cambiar-principal-alterno')
   @UseGuards(AuthGuard)
-  async voto(@Body() votoDto: VotoDto) {
-    const sape = await this.puntoUsuarioService.validarVoto(
-      votoDto.codigo,
-      votoDto.id_usuario,
-      votoDto.punto,
-      votoDto.opcion,
-      votoDto.es_razonado,
-    );
-    this.websocketGateway.emitChange(sape);
+  async cambiarPrincipalAlterno(
+    @Body('id_sesion', ParseIntPipe) idSesion: number,
+    @Body('id_usuario', ParseIntPipe) idUsuario: number,
+  ) {
+    await this.puntoUsuarioService.cambiarPrincipalAlterno(idSesion, idUsuario);
+    //return { message: 'Cambio de principal/alterno realizado correctamente.' };
   }
+
 }

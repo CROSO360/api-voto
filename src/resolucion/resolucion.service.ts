@@ -20,7 +20,7 @@ export class ResolucionService extends BaseService<Resolucion> {
   }
 
   async actualizarResolucion(dto: UpdateResolucionDto): Promise<void> {
-    const { id_punto, id_usuario, nombre, descripcion } = dto;
+    const { id_punto, id_usuario, nombre, descripcion, voto_manual } = dto;
     const fecha = new Date();
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -31,12 +31,18 @@ export class ResolucionService extends BaseService<Resolucion> {
       // 1️⃣ Establecer el usuario actual en la misma conexión
       await queryRunner.query(`SET @usuario_actual = ?`, [id_usuario]);
 
-      // 2️⃣ Ejecutar el update en la misma conexión
-      await queryRunner.manager.update(Resolucion, id_punto, {
+      // 2️⃣ Ejecutar el update incluyendo voto_manual si viene en el DTO
+      const updateData: Partial<Resolucion> = {
         nombre,
         descripcion,
         fecha,
-      });
+      };
+
+      if (voto_manual !== undefined) {
+        updateData.voto_manual = voto_manual;
+      }
+
+      await queryRunner.manager.update(Resolucion, id_punto, updateData);
 
       // 3️⃣ Confirmar cambios
       await queryRunner.commitTransaction();

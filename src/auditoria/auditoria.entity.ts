@@ -34,6 +34,9 @@ export class Auditoria {
   descripcion_anterior: string;
 
   @Column()
+  voto_manual_anterior: boolean;
+
+  @Column()
   fecha_actual: Date;
 
   @Column()
@@ -41,4 +44,7 @@ export class Auditoria {
 
   @Column()
   descripcion_actual: string;
+
+  @Column()
+  voto_manual_actual: boolean;
 }

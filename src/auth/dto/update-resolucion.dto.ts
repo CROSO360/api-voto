@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsDate } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsDate, isBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateResolucionDto {
@@ -22,4 +22,6 @@ export class UpdateResolucionDto {
   @Type(() => Date)
   @IsNotEmpty()
   fecha: Date;
+
+  voto_manual?: boolean;
 }
