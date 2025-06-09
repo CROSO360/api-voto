@@ -1,7 +1,14 @@
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
-@WebSocketGateway()
+@WebSocketGateway({
+  namespace: '/',
+  path: '/api/socket.io',
+  cors: {
+    origin: [process.env.VOTACION_OCS_URL, process.env.VOTO_MOVIL_OCS_URL],
+    credentials: true,
+  },
+})
 export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
