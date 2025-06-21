@@ -1,35 +1,57 @@
+// ==============================
+// Importaciones
+// ==============================
+
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Sesion } from './sesion.entity';
-import { BaseService } from 'src/commons/commons.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Punto } from 'src/punto/punto.entity';
-import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
 import * as PdfPrinter from 'pdfmake';
-import { Documento } from 'src/documento/documento.entity';
-import { SesionDocumento } from 'src/sesion-documento/sesion-documento.entity';
 import * as fs from 'fs';
 import * as path from 'path';
+
+import { Sesion } from './sesion.entity';
+import { Punto } from 'src/punto/punto.entity';
+import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
+import { Documento } from 'src/documento/documento.entity';
+import { SesionDocumento } from 'src/sesion-documento/sesion-documento.entity';
+import { BaseService } from 'src/commons/commons.service';
+
+// ==============================
+// Servicio: SesionService
+// ==============================
 
 @Injectable()
 export class SesionService extends BaseService<Sesion> {
   constructor(
-    @InjectRepository(Sesion) private sesionRepo: Repository<Sesion>,
-    @InjectRepository(Punto) private puntoRepo: Repository<Punto>,
+    @InjectRepository(Sesion)
+    private readonly sesionRepo: Repository<Sesion>,
+
+    @InjectRepository(Punto)
+    private readonly puntoRepo: Repository<Punto>,
+
     @InjectRepository(PuntoUsuario)
-    private puntoUsuarioRepo: Repository<PuntoUsuario>,
+    private readonly puntoUsuarioRepo: Repository<PuntoUsuario>,
+
     @InjectRepository(Documento)
     private readonly documentoRepo: Repository<Documento>,
+
     @InjectRepository(SesionDocumento)
     private readonly sesionDocumentoRepo: Repository<SesionDocumento>,
   ) {
     super();
   }
 
+  /**
+   * Devuelve el repositorio asociado a la entidad Sesion.
+   */
   getRepository(): Repository<Sesion> {
     return this.sesionRepo;
   }
 
+  /**
+   * Genera y guarda un reporte PDF con los resultados de una sesión finalizada.
+   * Incluye información de puntos, resoluciones y cálculos ponderados.
+   */
   async generarReporteSesion(idSesion: number): Promise<Buffer> {
     const sesion = await this.sesionRepo.findOne({
       where: { id_sesion: idSesion },
@@ -43,6 +65,10 @@ export class SesionService extends BaseService<Sesion> {
     if (sesion.fase !== 'finalizada') {
       throw new BadRequestException('La sesión no está finalizada');
     }
+
+    // ========================
+    // Configuración de fuentes PDF
+    // ========================
 
     const fonts = {
       Roboto: {
@@ -58,12 +84,17 @@ export class SesionService extends BaseService<Sesion> {
       { text: `Resultados de la sesión ${sesion.nombre}`, style: 'header' },
     ];
 
+    // ========================
+    // Iteración por puntos
+    // ========================
+
     for (const punto of sesion.puntos) {
       const resolucion = punto.resolucion;
 
       content.push({ text: `Punto ${punto.nombre}`, style: 'subheader' });
       content.push({ text: punto.detalle, margin: [0, 0, 0, 5] });
 
+      // Solo si la resolución es automática
       if (!resolucion?.voto_manual) {
         const resultados = await this.puntoUsuarioRepo.find({
           where: { punto: { id_punto: punto.id_punto } },
@@ -134,7 +165,6 @@ export class SesionService extends BaseService<Sesion> {
           `${totalAbstencionPeso.toFixed(2)} (${punto.p_abstencion}%)`,
         ]);
 
-
         content.push({
           table: {
             headerRows: 1,
@@ -156,6 +186,7 @@ export class SesionService extends BaseService<Sesion> {
         });
       }
 
+      // Detalle de resolución (manual o automática)
       if (resolucion) {
         content.push({
           table: {
@@ -174,9 +205,12 @@ export class SesionService extends BaseService<Sesion> {
           italics: true,
           margin: [0, 0, 0, 20],
         });
-
       }
     }
+
+    // ========================
+    // Definición del documento PDF
+    // ========================
 
     const docDefinition = {
       content,
@@ -186,15 +220,17 @@ export class SesionService extends BaseService<Sesion> {
       },
     };
 
+    // ========================
+    // Escritura del archivo
+    // ========================
+
     const timestamp = new Date()
       .toISOString()
       .replace(/[-:]/g, '')
       .replace(/\..+/, '')
       .replace('T', '_');
 
-    const nombreArchivo = `reporte_sesion_${
-      sesion.codigo || sesion.id_sesion
-    }_${timestamp}.pdf`;
+    const nombreArchivo = `reporte_sesion_${sesion.codigo || sesion.id_sesion}_${timestamp}.pdf`;
     const rutaArchivo = path.join(process.cwd(), 'uploads', nombreArchivo);
 
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
@@ -207,26 +243,33 @@ export class SesionService extends BaseService<Sesion> {
       stream.on('error', reject);
     });
 
-    // Guardar Documento
+    // ========================
+    // Guardado en base de datos
+    // ========================
+
     const documento = this.documentoRepo.create({
       nombre: nombreArchivo,
-      url: `http://localhost:3000/subidas/${nombreArchivo}`,
+      url: `${process.env.APP_BASE_URL}/subidas/${nombreArchivo}`,
       fecha_subida: new Date(),
       estado: true,
       status: true,
     });
+
     const documentoGuardado = await this.documentoRepo.save(documento);
 
-    // Relacionar con la sesión
     const sesionDocumento = this.sesionDocumentoRepo.create({
       sesion,
       documento: documentoGuardado,
       estado: true,
       status: true,
     });
+
     await this.sesionDocumentoRepo.save(sesionDocumento);
 
-    // Devolver el buffer para descarga
+    // ========================
+    // Devolver buffer del PDF
+    // ========================
+
     const buffer = fs.readFileSync(rutaArchivo);
     return buffer;
   }

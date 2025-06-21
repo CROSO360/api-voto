@@ -1,3 +1,7 @@
+// ==============================
+// Importaciones
+// ==============================
+
 import {
   BadRequestException,
   Controller,
@@ -5,11 +9,17 @@ import {
   Param,
   Res,
 } from '@nestjs/common';
-import { Sesion } from './sesion.entity';
-import { BaseController } from 'src/commons/commons.controller';
-import { SesionService } from './sesion.service';
-import { BaseService } from 'src/commons/commons.service';
+
 import { Response } from 'express';
+
+import { Sesion } from './sesion.entity';
+import { SesionService } from './sesion.service';
+import { BaseController } from 'src/commons/commons.controller';
+import { BaseService } from 'src/commons/commons.service';
+
+// ==============================
+// Controlador de Sesiones
+// ==============================
 
 @Controller('sesion')
 export class SesionController extends BaseController<Sesion> {
@@ -17,16 +27,26 @@ export class SesionController extends BaseController<Sesion> {
     super();
   }
 
+  /**
+   * Devuelve el servicio específico para esta entidad.
+   */
   getService(): BaseService<Sesion> {
     return this.sesionService;
   }
 
+  /**
+   * Endpoint para generar el PDF de reporte de una sesión finalizada.
+   * Responde con el archivo directamente como descarga.
+   * 
+   * @param id ID de la sesión
+   * @param res Objeto de respuesta de Express
+   */
   @Get('reporte/:id')
   async generarReporte(@Param('id') id: number, @Res() res: Response) {
     try {
       const buffer = await this.sesionService.generarReporteSesion(id);
 
-      // Generar timestamp único
+      // Generar nombre de archivo con timestamp
       const timestamp = new Date()
         .toISOString()
         .replace(/[-:]/g, '')
@@ -35,12 +55,14 @@ export class SesionController extends BaseController<Sesion> {
 
       const nombreArchivo = `reporte_sesion_${id}_${timestamp}.pdf`;
 
+      // Configurar headers de respuesta
       res.set({
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename=${nombreArchivo}`,
         'Content-Length': buffer.length,
       });
 
+      // Enviar archivo al cliente
       res.send(buffer);
     } catch (error) {
       throw new BadRequestException(

@@ -1,6 +1,7 @@
-import { Asistencia } from 'src/asistencia/asistencia.entity';
-import { GrupoUsuario } from 'src/grupo-usuario/grupo-usuario.entity';
-import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
+// ==============================
+// Importaciones
+// ==============================
+
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -12,14 +13,26 @@ import {
   BeforeInsert,
   BeforeUpdate,
 } from 'typeorm';
+
 import * as CryptoJS from 'crypto-js';
 import * as bcrypt from 'bcrypt';
-import { Miembro } from 'src/miembro/miembro.entity';
+import { GrupoUsuario } from 'src/grupo-usuario/grupo-usuario.entity';
 import { Facultad } from 'src/facultad/facultad.entity';
+import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
+import { Asistencia } from 'src/asistencia/asistencia.entity';
+import { Miembro } from 'src/miembro/miembro.entity';
 import { Auditoria } from 'src/auditoria/auditoria.entity';
+
+// ==============================
+// Entidad Usuario
+// ==============================
 
 @Entity()
 export class Usuario {
+  // ===========================
+  // Campos primarios y básicos
+  // ===========================
+
   @PrimaryGeneratedColumn()
   id_usuario: number;
 
@@ -30,50 +43,87 @@ export class Usuario {
   codigo: string;
 
   @Column()
-  cedula: string; // Ahora es pública y se maneja directamente
+  cedula: string; // Cédula encriptada
 
   @Column()
-  contrasena: string; // encriptar
+  contrasena: string; // Contraseña con hash bcrypt
 
   @Column()
-  tipo: string;
-
-  @ManyToOne(() => GrupoUsuario, (grupoUsuario) => grupoUsuario.usuarios)
-  @JoinColumn({ name: 'id_grupo_usuario' })
-  grupoUsuario: GrupoUsuario;
-
-  @ManyToOne(() => Usuario, (usuario) => usuario.usuarioReemplazo)
-  @JoinColumn({ name: 'id_usuario_reemplazo' })
-  usuarioReemplazo: Usuario;
-
-  @ManyToOne(() => Facultad, (facultad) => facultad.usuarios)
-  @JoinColumn({ name: 'id_facultad' })
-  facultad: Facultad;
+  tipo: string; // 'administrador' | 'votante'
 
   @Column()
   es_reemplazo: boolean;
 
   @Column()
-  estado: boolean;
+  estado: boolean; // Control de edición/eliminación
 
   @Column()
-  status: boolean;
+  status: boolean; // Indica si está activo (para sesiones/votación)
 
-  @OneToMany(() => PuntoUsuario, (puntoUsuario) => puntoUsuario.usuario)
-  puntoUsuarios: PuntoUsuario[];
+  // ===========================
+  // Relaciones
+  // ===========================
 
+  /**
+   * Grupo al que pertenece el usuario.
+   * Ej: profesor, estudiante, trabajador.
+   */
+  @ManyToOne(() => GrupoUsuario, (grupoUsuario) => grupoUsuario.usuarios)
+  @JoinColumn({ name: 'id_grupo_usuario' })
+  grupoUsuario: GrupoUsuario;
+
+  /**
+   * Usuario que actúa como su reemplazo (si existe).
+   */
+  @ManyToOne(() => Usuario, (usuario) => usuario.usuarioReemplazo)
+  @JoinColumn({ name: 'id_usuario_reemplazo' })
+  usuarioReemplazo: Usuario;
+
+  /**
+   * Facultad a la que pertenece el usuario.
+   */
+  @ManyToOne(() => Facultad, (facultad) => facultad.usuarios)
+  @JoinColumn({ name: 'id_facultad' })
+  facultad: Facultad;
+
+  /**
+   * Vínculo a asistencias registradas.
+   */
   @OneToMany(() => Asistencia, (asistencia) => asistencia.usuario)
   asistencias: Asistencia[];
 
-  @OneToMany(() => Miembro, (miembro) => miembro.usuario)
-  miembros: Miembro[];
+  /**
+   * Vínculo a los puntos donde participa como votante.
+   */
+  @OneToMany(() => PuntoUsuario, (puntoUsuario) => puntoUsuario.usuario)
+  puntoUsuarios: PuntoUsuario[];
 
-  @OneToMany(() => Auditoria, (auditoria) => auditoria.usuario)
-  auditorias: Auditoria[];
-
+  /**
+   * Vínculo a los puntos donde emitió el voto (puede coincidir o no con `usuario`)
+   */
   @OneToMany(() => PuntoUsuario, (puntoUsuario) => puntoUsuario.votante)
   votosEmitidos: PuntoUsuario[];
 
+  /**
+   * Vínculo a registros de membresía en el OCS.
+   */
+  @OneToMany(() => Miembro, (miembro) => miembro.usuario)
+  miembros: Miembro[];
+
+  /**
+   * Vínculo a auditorías registradas por este usuario.
+   */
+  @OneToMany(() => Auditoria, (auditoria) => auditoria.usuario)
+  auditorias: Auditoria[];
+
+  // ===========================
+  // Hooks de encriptación/hash
+  // ===========================
+
+  /**
+   * Hook que se ejecuta antes de insertar o actualizar un usuario.
+   * Se encarga de hashear la contraseña y encriptar la cédula.
+   */
   @BeforeInsert()
   @BeforeUpdate()
   async hashFields() {
@@ -90,5 +140,4 @@ export class Usuario {
       this.cedula = CryptoJS.AES.encrypt(this.cedula, encryptionKey).toString();
     }
   }
-
 }

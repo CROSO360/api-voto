@@ -1,14 +1,19 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+
+// =======================================================
+// MÓDULOS INTERNOS
+// =======================================================
 
 import { Documento } from 'src/documento/documento.entity';
 import { Sesion } from 'src/sesion/sesion.entity';
-import { Usuario } from 'src/usuario/usuario.entity';
-import {
-  Column,
-  Entity,
-  JoinColumn,
-  ManyToOne,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+
+// =======================================================
+// ENTIDAD: SesionDocumento
+// =======================================================
 
 @Entity()
 export class SesionDocumento {

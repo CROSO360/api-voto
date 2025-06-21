@@ -1,13 +1,21 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import { Module } from '@nestjs/common';
-import { AuditoriaService } from './auditoria.service';
-import { AuditoriaController } from './auditoria.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditoriaController } from './auditoria.controller';
+import { AuditoriaService } from './auditoria.service';
 import { Auditoria } from './auditoria.entity';
 
+// =======================================================
+// MÓDULO: AuditoriaModule
+// =======================================================
+
 @Module({
-  imports:[TypeOrmModule.forFeature([Auditoria])],
+  imports: [TypeOrmModule.forFeature([Auditoria])],
   providers: [AuditoriaService],
   controllers: [AuditoriaController],
-  exports: [AuditoriaService]
+  exports: [AuditoriaService],
 })
 export class AuditoriaModule {}

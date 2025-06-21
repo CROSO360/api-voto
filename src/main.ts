@@ -1,13 +1,22 @@
+// ==========================================
+// main.ts - Punto de entrada de la aplicación
+// ==========================================
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import * as cors from 'cors';
 import * as dotenv from 'dotenv';
+
+dotenv.config(); // Cargar variables de entorno
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const corsOptions: import("@nestjs/common/interfaces/external/cors-options.interface").CorsOptions = {
-    origin: [process.env.VOTACION_OCS_URL,process.env.VOTO_MOVIL_OCS_URL],
+  // Configuración de CORS para clientes web y móvil
+  const corsOptions = {
+    origin: [
+      process.env.VOTACION_OCS_URL,
+      process.env.VOTO_MOVIL_OCS_URL,
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     allowedHeaders: 'Origin,Accept,Content-Type,Authorization',
     credentials: true,
@@ -15,6 +24,8 @@ async function bootstrap() {
 
   app.enableCors(corsOptions);
 
-  await app.listen(process.env.PORT || 3000);
+  // Iniciar servidor
+  const PORT = process.env.PORT || 3000;
+  await app.listen(PORT);
 }
 bootstrap();

@@ -1,11 +1,28 @@
-import { Body, Controller, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
+import {
+  Body,
+  Controller,
+  Param,
+  ParseIntPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+
 import { PuntoUsuario } from './punto-usuario.entity';
-import { BaseController } from 'src/commons/commons.controller';
-import { BaseService } from 'src/commons/commons.service';
 import { PuntoUsuarioService } from './punto-usuario.service';
 import { WebsocketGateway } from 'src/websocket/websocket.gateway';
-import { VotoDto } from 'src/auth/dto/voto.dto';
+
+import { BaseController } from 'src/commons/commons.controller';
+import { BaseService } from 'src/commons/commons.service';
 import { AuthGuard } from 'src/auth/auth.guard';
+import { VotoDto } from 'src/auth/dto/voto.dto';
+
+// =======================================================
+// CONTROLADOR: PuntoUsuarioController
+// =======================================================
 
 @Controller('punto-usuario')
 export class PuntoUsuarioController extends BaseController<PuntoUsuario> {
@@ -20,41 +37,53 @@ export class PuntoUsuarioController extends BaseController<PuntoUsuario> {
     return this.puntoUsuarioService;
   }
 
+  // ===================================================
+  // GENERACIÓN Y ELIMINACIÓN MASIVA DE VOTOS
+  // ===================================================
+
   @Post('generar-puntovoto/:idSesion')
-  async generarPorSesion(@Param('idSesion') idSesion: number) {
+  async generarPorSesion(
+    @Param('idSesion', ParseIntPipe) idSesion: number,
+  ): Promise<void> {
     return this.puntoUsuarioService.generarVotacionesPorSesion(idSesion);
   }
 
   @Post('eliminar-puntovoto/:idSesion')
-async eliminarPorSesion(@Param('idSesion') idSesion: number) {
-  return this.puntoUsuarioService.eliminarVotacionesPorSesion(idSesion);
-}
+  async eliminarPorSesion(
+    @Param('idSesion', ParseIntPipe) idSesion: number,
+  ): Promise<void> {
+    return this.puntoUsuarioService.eliminarVotacionesPorSesion(idSesion);
+  }
 
+  // ===================================================
+  // REGISTRO DE VOTO
+  // ===================================================
 
   @Post('voto')
-@UseGuards(AuthGuard)
-async voto(@Body() votoDto: VotoDto) {
-  const idPU = await this.puntoUsuarioService.validarVoto(
-    votoDto.codigo,
-    votoDto.id_usuario,
-    votoDto.punto,
-    votoDto.opcion,
-    votoDto.es_razonado,
-    votoDto.votante
-  );
+  @UseGuards(AuthGuard)
+  async voto(@Body() votoDto: VotoDto): Promise<void> {
+    const idPU = await this.puntoUsuarioService.validarVoto(
+      votoDto.codigo,
+      votoDto.id_usuario,
+      votoDto.punto,
+      votoDto.opcion,
+      votoDto.es_razonado,
+      votoDto.votante,
+    );
 
-  this.websocketGateway.emitChange(idPU);
-}
+    this.websocketGateway.emitChange(idPU);
+  }
 
+  // ===================================================
+  // CAMBIO PRINCIPAL ↔ REEMPLAZO
+  // ===================================================
 
   @Post('cambiar-principal-alterno')
   @UseGuards(AuthGuard)
   async cambiarPrincipalAlterno(
     @Body('id_sesion', ParseIntPipe) idSesion: number,
     @Body('id_usuario', ParseIntPipe) idUsuario: number,
-  ) {
+  ): Promise<void> {
     await this.puntoUsuarioService.cambiarPrincipalAlterno(idSesion, idUsuario);
-    //return { message: 'Cambio de principal/alterno realizado correctamente.' };
   }
-
 }

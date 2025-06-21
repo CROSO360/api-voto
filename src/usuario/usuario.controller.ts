@@ -1,15 +1,41 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+// ==============================
+// Importaciones
+// ==============================
+
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+
 import { Usuario } from './usuario.entity';
-import { BaseController } from 'src/commons/commons.controller';
 import { UsuarioService } from './usuario.service';
-import { BaseService } from 'src/commons/commons.service';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { CreateUsuarioDto } from 'src/auth/dto/create-usuario.dto';
+
+// ==============================
+// Controlador de Usuario
+// ==============================
 
 @Controller('usuario')
 export class UsuarioController {
   constructor(private readonly usuarioService: UsuarioService) {}
 
+  // ==============================
+  // Consultas GET
+  // ==============================
+
+  /**
+   * Obtiene todos los usuarios con sus relaciones (si se especifican).
+   * Ejemplo: GET /usuario/all?relations=grupoUsuario,usuarioReemplazo
+   */
   @Get('all')
   @UseGuards(AuthGuard)
   async findAll(@Query() query: any): Promise<Usuario[]> {
@@ -17,12 +43,19 @@ export class UsuarioController {
     return this.usuarioService.findAll(relations);
   }
 
+  /**
+   * Busca un usuario por su ID.
+   */
   @Get('find/:id')
   @UseGuards(AuthGuard)
   async findOne(@Param('id') id: number): Promise<Usuario> {
     return this.usuarioService.findOne(id);
   }
 
+  /**
+   * Busca un usuario por campos dinámicos (query params).
+   * Ejemplo: GET /usuario/findOneBy?codigo=U001&relations=grupoUsuario
+   */
   @Get('findOneBy')
   @UseGuards(AuthGuard)
   async findOneBy(@Query() query: any): Promise<Usuario> {
@@ -32,6 +65,9 @@ export class UsuarioController {
     return this.usuarioService.findOneBy(filteredQuery, relations);
   }
 
+  /**
+   * Busca múltiples usuarios por condiciones personalizadas.
+   */
   @Get('findAllBy')
   @UseGuards(AuthGuard)
   async findAllBy(@Query() query: any): Promise<Usuario[]> {
@@ -41,6 +77,30 @@ export class UsuarioController {
     return this.usuarioService.findAllBy(filteredQuery, relations);
   }
 
+  /**
+   * Obtiene el número total de usuarios.
+   */
+  @Get('count')
+  @UseGuards(AuthGuard)
+  async count(): Promise<number> {
+    return this.usuarioService.count();
+  }
+
+  /**
+   * Obtiene los posibles reemplazos válidos para un usuario.
+   */
+  @Get('reemplazos-disponibles/:id')
+  async obtenerReemplazosDisponibles(@Param('id') id: number): Promise<Usuario[]> {
+    return await this.usuarioService.obtenerReemplazosDisponibles(id);
+  }
+
+  // ==============================
+  // Creación y actualización
+  // ==============================
+
+  /**
+   * Crea un nuevo usuario.
+   */
   @Post('save')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.CREATED)
@@ -48,12 +108,10 @@ export class UsuarioController {
     return this.usuarioService.createUsuario(createUsuarioDto);
   }
 
-  /*@Put('update/:id')
-  @UseGuards(AuthGuard)
-  async update(@Param('id') id: number, @Body() updateUsuarioDto: Partial<CreateUsuarioDto>): Promise<Usuario> {
-    return this.usuarioService.updateUsuario(id, updateUsuarioDto);
-  }*/
-
+  /**
+   * Actualiza los datos de un usuario.
+   * Requiere enviar el objeto completo del usuario.
+   */
   @Post('update')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.CREATED)
@@ -61,22 +119,17 @@ export class UsuarioController {
     return await this.usuarioService.updateUsuario(entity);
   }
 
+  // ==============================
+  // Eliminación
+  // ==============================
+
+  /**
+   * Elimina un usuario por su ID.
+   */
   @Delete('delete/:id')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.OK)
   async delete(@Param('id') id: number): Promise<void> {
     return this.usuarioService.deleteUsuario(id);
   }
-
-  @Get('count')
-  @UseGuards(AuthGuard)
-  async count(): Promise<number> {
-    return this.usuarioService.count();
-  }
-
-  @Get('reemplazos-disponibles/:id')
-  async obtenerReemplazosDisponibles(@Param('id') id: number): Promise<Usuario[]> {
-    return await this.usuarioService.obtenerReemplazosDisponibles(id);
-  }
-
 }

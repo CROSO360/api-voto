@@ -1,18 +1,34 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import { Controller } from '@nestjs/common';
+
+// =======================================================
+// CONTROLADORES Y SERVICIOS BASE
+// =======================================================
+
 import { BaseController } from 'src/commons/commons.controller';
+import { BaseService } from 'src/commons/commons.service';
+
+// =======================================================
+// ENTIDAD Y SERVICIO
+// =======================================================
+
 import { Miembro } from './miembro.entity';
 import { MiembroService } from './miembro.service';
-import { BaseService } from 'src/commons/commons.service';
+
+// =======================================================
+// CONTROLADOR: MiembroController
+// =======================================================
 
 @Controller('miembro')
 export class MiembroController extends BaseController<Miembro> {
+  constructor(private readonly miembroService: MiembroService) {
+    super();
+  }
 
-    constructor(private readonly miembroService: MiembroService) {
-        super();
-    }
-
-    getService(): BaseService<Miembro> {
-        return this.miembroService;
-    }
-
+  getService(): BaseService<Miembro> {
+    return this.miembroService;
+  }
 }

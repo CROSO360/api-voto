@@ -1,7 +1,13 @@
-import { Usuario } from "src/usuario/usuario.entity";
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+// =======================================================
+// IMPORTACIONES
+// =======================================================
 
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Usuario } from 'src/usuario/usuario.entity';
 
+// =======================================================
+// ENTIDAD: Miembro
+// =======================================================
 
 @Entity()
 export class Miembro {
@@ -9,7 +15,7 @@ export class Miembro {
   id_miembro: number;
 
   @ManyToOne(() => Usuario, usuario => usuario.miembros)
-  @JoinColumn({name: "id_usuario"})
+  @JoinColumn({ name: 'id_usuario' })
   usuario: Usuario;
 
   @Column()

@@ -1,25 +1,38 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { PuntoUsuario } from './punto-usuario.entity';
-import { BaseService } from 'src/commons/commons.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+
+import { PuntoUsuario } from './punto-usuario.entity';
+import { BaseService } from 'src/commons/commons.service';
 import { SesionService } from 'src/sesion/sesion.service';
 import { Punto } from 'src/punto/punto.entity';
 import { Miembro } from 'src/miembro/miembro.entity';
+
+// =======================================================
+// SERVICIO: PuntoUsuarioService
+// =======================================================
 
 @Injectable()
 export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
   constructor(
     @InjectRepository(PuntoUsuario)
     private puntoUsuarioRepo: Repository<PuntoUsuario>,
-    @InjectRepository(Punto) private readonly puntoRepo: Repository<Punto>,
+
+    @InjectRepository(Punto)
+    private readonly puntoRepo: Repository<Punto>,
+
     @InjectRepository(Miembro)
     private readonly miembroRepo: Repository<Miembro>,
+
     private readonly sesionService: SesionService,
     private dataSource: DataSource,
   ) {
@@ -30,23 +43,22 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
     return this.puntoUsuarioRepo;
   }
 
+  // ===================================================
+  // GENERACIÓN Y ELIMINACIÓN MASIVA DE VOTACIONES
+  // ===================================================
+
   async generarVotacionesPorSesion(idSesion: number): Promise<void> {
     const sesion = await this.sesionService.findOne({ id_sesion: idSesion });
     if (!sesion) throw new BadRequestException('La sesión no existe');
 
-    // Obtener todos los puntos activos de la sesión
     const puntos = await this.puntoRepo.find({
       where: { sesion: { id_sesion: idSesion }, status: true },
-      relations: [],
     });
 
     if (!puntos.length) {
-      throw new BadRequestException(
-        'No hay puntos disponibles para generar votación',
-      );
+      throw new BadRequestException('No hay puntos disponibles para votar');
     }
 
-    // Obtener miembros activos con usuario y grupoUsuario
     const miembros = await this.miembroRepo.find({
       where: { estado: true, status: true },
       relations: ['usuario', 'usuario.grupoUsuario'],
@@ -73,13 +85,13 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
         });
 
         if (!existe) {
-          const puntoUsuario = this.puntoUsuarioRepo.create({
-            punto: { id_punto: punto.id_punto },
-            usuario: { id_usuario: usuario.id_usuario },
-            estado,
-          });
-
-          puntoUsuarios.push(puntoUsuario);
+          puntoUsuarios.push(
+            this.puntoUsuarioRepo.create({
+              punto: { id_punto: punto.id_punto },
+              usuario: { id_usuario: usuario.id_usuario },
+              estado,
+            }),
+          );
         }
       }
     }
@@ -89,18 +101,14 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
 
   async eliminarVotacionesPorSesion(idSesion: number): Promise<void> {
     const sesion = await this.sesionService.findOne({ id_sesion: idSesion });
-
-    if (!sesion) {
-      throw new BadRequestException('La sesión no existe.');
-    }
+    if (!sesion) throw new BadRequestException('La sesión no existe');
 
     if (sesion.fase?.toLowerCase() !== 'pendiente') {
       throw new BadRequestException(
-        'Solo se pueden eliminar votaciones si la sesión está en fase "pendiente".',
+        'Solo puede eliminarse si la fase es "pendiente"',
       );
     }
 
-    // Obtener los puntos activos de la sesión
     const puntos = await this.puntoRepo.find({
       where: { sesion: { id_sesion: idSesion }, status: true },
     });
@@ -109,7 +117,6 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
 
     const idsPuntos = puntos.map((p) => p.id_punto);
 
-    // Eliminar todos los punto_usuario vinculados a estos puntos
     await this.puntoUsuarioRepo
       .createQueryBuilder()
       .delete()
@@ -118,85 +125,92 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
       .execute();
   }
 
+  // ===================================================
+  // REGISTRO DE VOTO
+  // ===================================================
+
   async validarVoto(
-  codigo: string,
-  idUsuario: number,
-  punto: number,
-  opcion: string | null,
-  es_razonado: boolean,
-  votante: number
-): Promise<number> {
-  const sesion = await this.sesionService.findOneBy({ codigo }, []);
+    codigo: string,
+    idUsuario: number,
+    punto: number,
+    opcion: string | null,
+    es_razonado: boolean,
+    votante: number,
+  ): Promise<number> {
+    const sesion = await this.sesionService.findOneBy({ codigo }, []);
 
-  if (
-    sesion &&
-    idUsuario &&
-    punto &&
-    (opcion === 'afavor' || opcion === 'encontra' || opcion === 'abstencion' || opcion === null)
-  ) {
-    const puntoUsuario = await this.findOneBy(
-      {
-        punto: { id_punto: punto },
-        usuario: { id_usuario: idUsuario }
-      },
-      ['punto', 'usuario']
-    );
+    if (
+      sesion &&
+      idUsuario &&
+      punto &&
+      (opcion === 'afavor' ||
+        opcion === 'encontra' ||
+        opcion === 'abstencion' ||
+        opcion === null)
+    ) {
+      const puntoUsuario = await this.findOneBy(
+        {
+          punto: { id_punto: punto },
+          usuario: { id_usuario: idUsuario },
+        },
+        ['punto', 'usuario'],
+      );
 
-    const puntoUsuarioData: any = {
-      id_punto_usuario: puntoUsuario.id_punto_usuario,
-      opcion,
-      es_razonado,
-      votante: { id_usuario: votante },
-      fecha: new Date(),
-    };
+      const puntoUsuarioData: any = {
+        id_punto_usuario: puntoUsuario.id_punto_usuario,
+        opcion,
+        es_razonado,
+        votante: { id_usuario: votante },
+        fecha: new Date(),
+      };
 
-    await this.save(puntoUsuarioData);
-    return puntoUsuario.id_punto_usuario;
+      await this.save(puntoUsuarioData);
+      return puntoUsuario.id_punto_usuario;
+    }
+
+    throw new UnauthorizedException('Campos del voto incorrectos');
   }
 
-  throw new UnauthorizedException('Campos del voto incorrectos');
-}
+  // ===================================================
+  // CAMBIO PRINCIPAL ↔ REEMPLAZO
+  // ===================================================
 
+  async cambiarPrincipalAlterno(
+    idSesion: number,
+    idUsuario: number,
+  ): Promise<void> {
+    const puntos = await this.dataSource
+      .getRepository(Punto)
+      .createQueryBuilder('punto')
+      .leftJoinAndSelect('punto.puntoUsuarios', 'puntoUsuario')
+      .leftJoinAndSelect('puntoUsuario.usuario', 'usuario')
+      .leftJoinAndSelect('usuario.usuarioReemplazo', 'reemplazo')
+      .where('punto.sesion = :idSesion', { idSesion })
+      .getMany();
 
-  async cambiarPrincipalAlterno(idSesion: number, idUsuario: number): Promise<void> {
-  //console.log(`🔄 Iniciando cambio de principal/alterno para usuario ${idUsuario} en sesión ${idSesion}`);
+    const puntoUsuariosAActualizar: PuntoUsuario[] = [];
 
-  const puntos = await this.dataSource.getRepository(Punto)
-    .createQueryBuilder('punto')
-    .leftJoinAndSelect('punto.puntoUsuarios', 'puntoUsuario')
-    .leftJoinAndSelect('puntoUsuario.usuario', 'usuario')
-    .leftJoinAndSelect('usuario.usuarioReemplazo', 'reemplazo')
-    .where('punto.sesion = :idSesion', { idSesion })
-    .getMany();
+    for (const punto of puntos) {
+      for (const pu of punto.puntoUsuarios) {
+        const esTitular = pu.usuario.id_usuario === idUsuario;
+        const esReemplazo =
+          pu.usuario.usuarioReemplazo?.id_usuario === idUsuario;
 
-  //console.log(`✅ Se encontraron ${puntos.length} puntos en la sesión`);
-
-  const puntoUsuariosAActualizar: PuntoUsuario[] = [];
-
-  for (const punto of puntos) {
-    for (const pu of punto.puntoUsuarios) {
-      const esTitular = pu.usuario.id_usuario === idUsuario;
-      const esReemplazo = pu.usuario.usuarioReemplazo?.id_usuario === idUsuario;
-
-      if (esTitular || esReemplazo) {
-        //console.log(`➡️ Actualizando PU ${pu.id_punto_usuario} (${esTitular ? 'titular' : 'reemplazo'}) de ${pu.es_principal} a ${!pu.es_principal}`);
-        pu.es_principal = !pu.es_principal;
-        puntoUsuariosAActualizar.push(pu);
-      } else {
-        //console.log(`↪️ Ignorado PU ${pu.id_punto_usuario}: titular=${pu.usuario.id_usuario}, reemplazo=${pu.usuario.usuarioReemplazo?.id_usuario}`);
+        if (esTitular || esReemplazo) {
+          pu.es_principal = !pu.es_principal;
+          puntoUsuariosAActualizar.push(pu);
+        }
       }
     }
+
+    if (puntoUsuariosAActualizar.length === 0) {
+      throw new NotFoundException(
+        'No se encontraron registros para actualizar',
+      );
+    }
+
+    await this.dataSource
+      .getRepository(PuntoUsuario)
+      .save(puntoUsuariosAActualizar);
   }
-
-  if (puntoUsuariosAActualizar.length === 0) {
-    //console.log(`⚠️ No se encontraron registros coincidentes para actualizar`);
-    throw new NotFoundException('No se encontraron registros para actualizar');
-  }
-
-  await this.dataSource.getRepository(PuntoUsuario).save(puntoUsuariosAActualizar);
-
-  //console.log(`✅ Se actualizaron ${puntoUsuariosAActualizar.length} registros de puntoUsuario`);
-}
-
-
 }

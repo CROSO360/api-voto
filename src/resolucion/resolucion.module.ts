@@ -1,9 +1,19 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ResolucionController } from './resolucion.controller';
+
 import { Resolucion } from './resolucion.entity';
-import { PuntoModule } from 'src/punto/punto.module';
 import { ResolucionService } from './resolucion.service';
+import { ResolucionController } from './resolucion.controller';
+
+import { PuntoModule } from 'src/punto/punto.module';
+
+// =======================================================
+// MÓDULO: ResolucionModule
+// =======================================================
 
 @Module({
   imports: [

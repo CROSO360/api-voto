@@ -1,8 +1,16 @@
-import { Asistencia } from 'src/asistencia/asistencia.entity';
-import { PuntoDocumento } from 'src/punto-documento/punto-documento.entity';
-import { Punto } from 'src/punto/punto.entity';
-import { SesionDocumento } from 'src/sesion-documento/sesion-documento.entity';
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+
+import { SesionDocumento } from 'src/sesion-documento/sesion-documento.entity';
+import { PuntoDocumento } from 'src/punto-documento/punto-documento.entity';
+
+// =======================================================
+// ENTIDAD: Documento
+// Representa un archivo cargado al sistema
+// =======================================================
 
 @Entity()
 export class Documento {
@@ -24,10 +32,15 @@ export class Documento {
   @Column()
   status: boolean;
 
+  // =============================
+  // RELACIONES
+  // =============================
 
-  @OneToMany(() => SesionDocumento, sesionDocumento => sesionDocumento.sesion)
+  // Relación con documentos asociados a sesiones
+  @OneToMany(() => SesionDocumento, (sesionDocumento) => sesionDocumento.sesion)
   sesionDocumentos: SesionDocumento[];
 
-  @OneToMany(() => PuntoDocumento, puntoDocumento => puntoDocumento.punto)
+  // Relación con documentos asociados a puntos
+  @OneToMany(() => PuntoDocumento, (puntoDocumento) => puntoDocumento.punto)
   puntoDocumentos: PuntoDocumento[];
 }

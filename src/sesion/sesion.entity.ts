@@ -1,10 +1,23 @@
+// ==============================
+// Importaciones
+// ==============================
+
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+
 import { Asistencia } from 'src/asistencia/asistencia.entity';
 import { Punto } from 'src/punto/punto.entity';
 import { SesionDocumento } from 'src/sesion-documento/sesion-documento.entity';
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+
+// ==============================
+// Entidad: Sesion
+// ==============================
 
 @Entity()
 export class Sesion {
+  // ===========================
+  // Atributos básicos
+  // ===========================
+
   @PrimaryGeneratedColumn()
   id_sesion: number;
 
@@ -14,9 +27,6 @@ export class Sesion {
   @Column()
   codigo: string;
 
-  /*@Column()
-  oficio: string;*/
-
   @Column()
   fecha_inicio: Date;
 
@@ -24,24 +34,37 @@ export class Sesion {
   fecha_fin: Date;
 
   @Column()
-  tipo: string;
+  tipo: string; // 'ordinaria' | 'extraordinaria'
 
   @Column()
-  fase: string;
+  fase: string; // 'pendiente' | 'en curso' | 'finalizada'
 
   @Column()
-  estado: boolean;
+  estado: boolean; // Control de edición/eliminación
 
   @Column()
-  status: boolean;
+  status: boolean; // Activa/inactiva en términos funcionales
 
+  // ===========================
+  // Relaciones
+  // ===========================
 
+  /**
+   * Puntos del orden del día asociados a la sesión.
+   */
   @OneToMany(() => Punto, punto => punto.sesion)
   puntos: Punto[];
 
+  /**
+   * Asistencias registradas para esta sesión.
+   */
   @OneToMany(() => Asistencia, asistencia => asistencia.sesion)
   asistencias: Asistencia[];
 
+  /**
+   * Documentos vinculados a esta sesión (ej. reporte PDF).
+   */
   @OneToMany(() => SesionDocumento, sesionDocumento => sesionDocumento.sesion)
   sesionDocumentos: SesionDocumento[];
 }
+

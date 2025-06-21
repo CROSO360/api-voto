@@ -1,32 +1,51 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import { Module } from '@nestjs/common';
-import { DocumentoService } from './documento.service';
-import { DocumentoController } from './documento.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Documento } from './documento.entity';
 import { MulterModule } from '@nestjs/platform-express';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import * as multer from 'multer';
 
+// =======================================================
+// MÓDULOS INTERNOS
+// =======================================================
+
+import { DocumentoService } from './documento.service';
+import { DocumentoController } from './documento.controller';
+import { Documento } from './documento.entity';
+
+// =======================================================
+// MÓDULO: DocumentoModule
+// Configura subida de archivos y acceso público a /subidas
+// =======================================================
+
 @Module({
-  imports:[
+  imports: [
     TypeOrmModule.forFeature([Documento]),
+
+    //Configuración para subida de archivos
     MulterModule.register({
       storage: multer.diskStorage({
-        destination: './uploads', // 📌 Guardar en la carpeta correcta
+        destination: './uploads',
         filename: (req, file, cb) => {
-          const uniqueName = `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`; // 📌 Evitar espacios en el nombre
+          const uniqueName = `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`;
           cb(null, uniqueName);
         },
       }),
     }),
+
+    //Servir archivos estáticos en /subidas
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/subidas',
     }),
   ],
+
   providers: [DocumentoService],
   controllers: [DocumentoController],
-  exports: [DocumentoService]
+  exports: [DocumentoService],
 })
 export class DocumentoModule {}

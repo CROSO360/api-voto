@@ -1,12 +1,18 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import { Usuario } from 'src/usuario/usuario.entity';
 import {
-  Column,
   Entity,
-  JoinColumn,
-  ManyToOne,
-  OneToMany,
+  Column,
   PrimaryGeneratedColumn,
+  OneToMany,
 } from 'typeorm';
+
+// =======================================================
+// ENTIDAD: Facultad
+// =======================================================
 
 @Entity()
 export class Facultad {
@@ -22,6 +28,7 @@ export class Facultad {
   @Column()
   status: boolean;
 
+  //Relación con usuarios que pertenecen a esta facultad
   @OneToMany(() => Usuario, usuario => usuario.facultad)
   usuarios: Usuario[];
 }

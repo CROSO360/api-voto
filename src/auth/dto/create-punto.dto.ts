@@ -1,4 +1,16 @@
-import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+// =======================================================
+// DTO: CreatePuntoDto
+// Define los campos requeridos para crear un punto
+// =======================================================
+
+import {
+  IsBoolean,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class CreatePuntoDto {
   @IsInt()

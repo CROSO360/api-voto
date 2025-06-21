@@ -1,47 +1,54 @@
-import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common';
-import { AdminLoginDto } from './dto/adminLogin.dto';
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
+import { Body, Controller, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { AuthGuard } from './auth.guard';
+
+import { AdminLoginDto } from './dto/adminLogin.dto';
 import { UserLoginDto } from './dto/userLogin.dto';
-import { VotoDto } from './dto/voto.dto';
+
+// =======================================================
+// CONTROLADOR: AuthController
+// =======================================================
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // ===================================================
+  // POST: /auth/login
+  // Autenticación de administradores
+  // ===================================================
   @Post('login')
-  async login(@Body() adminloginDto: AdminLoginDto): Promise<any> {
+  async login(@Body() adminLoginDto: AdminLoginDto): Promise<any> {
     return this.authService.validateUser(
-      adminloginDto.codigo,
-      adminloginDto.contrasena,
+      adminLoginDto.codigo,
+      adminLoginDto.contrasena,
     );
   }
 
+  // ===================================================
+  // POST: /auth/voter-login
+  // Autenticación de votantes principales
+  // ===================================================
   @Post('voter-login')
-  async voterLogin(@Body() userloginDto: UserLoginDto): Promise<any> {
+  async voterLogin(@Body() userLoginDto: UserLoginDto): Promise<any> {
     return this.authService.validateVoter(
-      userloginDto.codigo,
-      userloginDto.cedula,
+      userLoginDto.codigo,
+      userLoginDto.cedula,
     );
   }
 
+  // ===================================================
+  // POST: /auth/voter-reemplazo-login
+  // Autenticación de votantes reemplazo
+  // ===================================================
   @Post('voter-reemplazo-login')
-  async voterReemplazoLogin(@Body() userloginDto: UserLoginDto): Promise<any> {
+  async voterReemplazoLogin(@Body() userLoginDto: UserLoginDto): Promise<any> {
     return this.authService.validateVoterReemplazo(
-      userloginDto.codigo,
-      userloginDto.cedula,
+      userLoginDto.codigo,
+      userLoginDto.cedula,
     );
   }
-
-  /*@Post('voto')
-  //@UseGuards(AuthGuard)
-  async voto(@Body() votoDto :VotoDto): Promise<any> {
-    return this.authService.validarVoto(
-      votoDto.codigo,
-      votoDto.id_usuario,
-      votoDto.puntos,
-      votoDto.opcion,
-    );
-  }*/
-
 }

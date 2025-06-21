@@ -1,11 +1,24 @@
-import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+// =============================================================
+// WebsocketGateway
+// Maneja conexiones WebSocket y emite eventos de actualización
+// =============================================================
+
+import {
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
 @WebSocketGateway({
-  namespace: '/',
-  path: '/api/socket.io',
+  namespace: '/', // Se usa el espacio raíz
+  path: '/api/socket.io', // Path personalizado para integrarse con NGINX
   cors: {
-    origin: [process.env.VOTACION_OCS_URL, process.env.VOTO_MOVIL_OCS_URL],
+    origin: [
+      process.env.VOTACION_OCS_URL,     // Frontend escritorio
+      process.env.VOTO_MOVIL_OCS_URL,   // Frontend móvil
+    ],
     credentials: true,
   },
 })
@@ -13,16 +26,18 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   @WebSocketServer()
   server: Server;
 
-  handleConnection(client: Socket) {
+  // Cliente se conecta
+  handleConnection(client: Socket): void {
     console.log(`Cliente conectado: ${client.id}`);
   }
 
-  handleDisconnect(client: Socket) {
+  // Cliente se desconecta
+  handleDisconnect(client: Socket): void {
     console.log(`Cliente desconectado: ${client.id}`);
   }
 
-  // Método para emitir eventos a los clientes
-  emitChange(puntoUsuarioId: number) {
+  // Emitir evento 'change' a todos los clientes conectados
+  emitChange(puntoUsuarioId: number): void {
     this.server.emit('change', { puntoUsuarioId });
   }
 }

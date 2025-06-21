@@ -1,5 +1,9 @@
-import { IsIn, IsNumber, IsOptional, IsString } from "class-validator";
-import { Punto } from "src/punto/punto.entity";
+// =======================================================
+// DTO: VotoDto
+// Define los campos necesarios para registrar un voto
+// =======================================================
+
+import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class VotoDto {
   @IsNumber()

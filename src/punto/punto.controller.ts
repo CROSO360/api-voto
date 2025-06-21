@@ -1,3 +1,6 @@
+// ==========================================
+// IMPORTACIONES
+// ==========================================
 import {
   Body,
   Controller,
@@ -10,17 +13,23 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { BaseController } from 'src/commons/commons.controller';
+
 import { PuntoService } from './punto.service';
-import { BaseService } from 'src/commons/commons.service';
-import { AuthGuard } from 'src/auth/auth.guard';
 import { Punto } from './punto.entity';
 import { CreatePuntoDto } from 'src/auth/dto/create-punto.dto';
 import { ResultadoManualDto } from 'src/auth/dto/resultado-manual.dto';
+import { AuthGuard } from 'src/auth/auth.guard';
 
+// ==========================================
+// CONTROLADOR: PuntoController
+// ==========================================
 @Controller('punto')
 export class PuntoController {
   constructor(private readonly puntoService: PuntoService) {}
+
+  // ===============================
+  // CONSULTAS GENERALES
+  // ===============================
 
   @Get('all')
   @UseGuards(AuthGuard)
@@ -38,26 +47,30 @@ export class PuntoController {
   @Get('findOneBy')
   @UseGuards(AuthGuard)
   async findOneBy(@Query() query?: any): Promise<Punto> {
-    const relations: string[] = query.relations
-      ? query.relations.split(',')
-      : [];
+    const relations = query.relations ? query.relations.split(',') : [];
     const filteredQuery = { ...query };
     delete filteredQuery.relations;
-
     return await this.puntoService.findOneBy(filteredQuery, relations);
   }
 
   @Get('findAllBy')
   @UseGuards(AuthGuard)
   async findAllBy(@Query() query?: any): Promise<Punto[]> {
-    const relations: string[] = query.relations
-      ? query.relations.split(',')
-      : [];
+    const relations = query.relations ? query.relations.split(',') : [];
     const filteredQuery = { ...query };
     delete filteredQuery.relations;
-
     return await this.puntoService.findAllBy(filteredQuery, relations);
   }
+
+  @Get('count')
+  @UseGuards(AuthGuard)
+  async count(): Promise<number> {
+    return await this.puntoService.count();
+  }
+
+  // ===============================
+  // GUARDADO Y CREACIÓN
+  // ===============================
 
   @Post('save')
   @UseGuards(AuthGuard)
@@ -73,18 +86,16 @@ export class PuntoController {
     return await this.puntoService.saveMany(entities);
   }
 
-  @Get('count')
-  @UseGuards(AuthGuard)
-  async count(): Promise<number> {
-    return await this.puntoService.count();
-  }
-
   @Post('crear')
-  @UseGuards(AuthGuard) // Protege el endpoint con autenticación
+  @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.CREATED)
   async crearPunto(@Body() createPuntoDto: CreatePuntoDto) {
     return await this.puntoService.crearPunto(createPuntoDto);
   }
+
+  // ===============================
+  // GESTIÓN DE PUNTOS
+  // ===============================
 
   @Post('eliminar/:id')
   @UseGuards(AuthGuard)
@@ -96,8 +107,7 @@ export class PuntoController {
   @Post('reordenar')
   @UseGuards(AuthGuard)
   async moverPunto(
-    @Body()
-    body: {
+    @Body() body: {
       idPunto: number;
       posicionInicial: number;
       posicionFinal: number;
@@ -109,6 +119,10 @@ export class PuntoController {
       body.posicionFinal,
     );
   }
+
+  // ===============================
+  // RESULTADOS
+  // ===============================
 
   @Post('calcular-resultados/:id')
   async calcularResultados(@Param('id', ParseIntPipe) id: number) {
@@ -122,20 +136,9 @@ export class PuntoController {
     await this.puntoService.calcularResultadosManual(dto);
   }
 
-  //------------------------------------------------------
-
   @Get('resultado/:idPunto')
   @UseGuards(AuthGuard)
   async getResultadoPunto(@Param('idPunto') idPunto: number): Promise<any> {
     return await this.puntoService.getResultadosPunto(idPunto);
-  }
-
-  @Post('registrar-resultado')
-  @UseGuards(AuthGuard)
-  async registerResultadosPunto(
-    @Body() body: { idPunto: number },
-  ): Promise<any> {
-    const { idPunto } = body;
-    return await this.puntoService.registerResultadosPunto(idPunto);
   }
 }

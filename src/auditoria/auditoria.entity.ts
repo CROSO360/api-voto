@@ -1,7 +1,8 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
 
-import { Documento } from 'src/documento/documento.entity';
 import { Resolucion } from 'src/resolucion/resolucion.entity';
-import { Sesion } from 'src/sesion/sesion.entity';
 import { Usuario } from 'src/usuario/usuario.entity';
 import {
   Column,
@@ -11,19 +12,26 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+// =======================================================
+// ENTIDAD: Auditoria
+// =======================================================
+
 @Entity()
 export class Auditoria {
   @PrimaryGeneratedColumn()
   id_auditoria: number;
 
+  // Resolución asociada
   @ManyToOne(() => Resolucion, (resolucion) => resolucion.auditorias)
   @JoinColumn({ name: 'id_punto' })
   resolucion: Resolucion;
 
+  // Usuario que realizó el cambio
   @ManyToOne(() => Usuario, (usuario) => usuario.auditorias)
   @JoinColumn({ name: 'id_usuario' })
   usuario: Usuario;
 
+  // Valores anteriores
   @Column()
   fecha_anterior: Date;
 
@@ -36,6 +44,7 @@ export class Auditoria {
   @Column()
   voto_manual_anterior: boolean;
 
+  // Valores actuales
   @Column()
   fecha_actual: Date;
 

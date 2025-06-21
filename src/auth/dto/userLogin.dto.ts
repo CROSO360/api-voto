@@ -1,4 +1,9 @@
-import { IsString } from "class-validator";
+// =======================================================
+// DTO: UserLoginDto
+// Define los campos necesarios para el login de votantes
+// =======================================================
+
+import { IsString } from 'class-validator';
 
 export class UserLoginDto {
   @IsString()

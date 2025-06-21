@@ -1,22 +1,23 @@
-import { Auditoria } from 'src/auditoria/auditoria.entity';
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
+import { Entity, PrimaryColumn, Column, OneToOne, JoinColumn, OneToMany } from 'typeorm';
 import { Punto } from 'src/punto/punto.entity';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  OneToOne,
-  JoinColumn,
-  PrimaryColumn,
-  OneToMany,
-} from 'typeorm';
+import { Auditoria } from 'src/auditoria/auditoria.entity';
+
+// =======================================================
+// ENTIDAD: Resolucion
+// =======================================================
 
 @Entity()
 export class Resolucion {
 
+  // ID compartido con Punto (relación 1:1)
   @PrimaryColumn()
   id_punto: number;
 
-  @OneToOne(() => Punto, (punto) => punto.resolucion)
+  @OneToOne(() => Punto, punto => punto.resolucion)
   @JoinColumn({ name: 'id_punto' })
   punto: Punto;
 
@@ -38,7 +39,7 @@ export class Resolucion {
   @Column()
   status: boolean;
 
-
-  @OneToMany(() => Auditoria, (auditoria) => auditoria.resolucion)
+  // Relación con auditorías asociadas a esta resolución
+  @OneToMany(() => Auditoria, auditoria => auditoria.resolucion)
   auditorias: Auditoria[];
 }

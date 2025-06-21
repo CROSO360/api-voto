@@ -1,19 +1,33 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { BaseService } from 'src/commons/commons.service';
 import { Repository } from 'typeorm';
+
+// Servicios y entidades relacionados
+import { BaseService } from 'src/commons/commons.service';
 import { Asistencia } from './asistencia.entity';
 import { Sesion } from 'src/sesion/sesion.entity';
 import { Miembro } from 'src/miembro/miembro.entity';
 import { Usuario } from 'src/usuario/usuario.entity';
+
+// =======================================================
+// SERVICIO: AsistenciaService
+// =======================================================
 
 @Injectable()
 export class AsistenciaService extends BaseService<Asistencia> {
   constructor(
     @InjectRepository(Asistencia)
     private asistenciaRepo: Repository<Asistencia>,
-    @InjectRepository(Sesion) private sesionRepo: Repository<Sesion>,
-    @InjectRepository(Miembro) private miembroRepo: Repository<Miembro>,
+
+    @InjectRepository(Sesion)
+    private sesionRepo: Repository<Sesion>,
+
+    @InjectRepository(Miembro)
+    private miembroRepo: Repository<Miembro>,
   ) {
     super();
   }
@@ -22,10 +36,12 @@ export class AsistenciaService extends BaseService<Asistencia> {
     return this.asistenciaRepo;
   }
 
+  // ===================================================
+  // MÉTODO: generarAsistencias
+  // Genera asistencias iniciales para todos los miembros
+  // ===================================================
   async generarAsistencias(idSesion: number): Promise<Asistencia[]> {
-    const sesion = await this.sesionRepo.findOne({
-      where: { id_sesion: idSesion },
-    });
+    const sesion = await this.sesionRepo.findOne({ where: { id_sesion: idSesion } });
     if (!sesion) throw new BadRequestException('La sesión no existe.');
 
     const miembros = await this.miembroRepo.find({
@@ -33,9 +49,7 @@ export class AsistenciaService extends BaseService<Asistencia> {
       relations: ['usuario'],
     });
     if (!miembros.length)
-      throw new BadRequestException(
-        'No hay miembros registrados para generar asistencias.',
-      );
+      throw new BadRequestException('No hay miembros registrados para generar asistencias.');
 
     const nuevasAsistencias: Asistencia[] = [];
 
@@ -52,7 +66,7 @@ export class AsistenciaService extends BaseService<Asistencia> {
         const asistencia = this.asistenciaRepo.create({
           sesion,
           usuario: miembro.usuario,
-          tipo_asistencia: null, // Se define luego: presencial, remoto, ausente
+          tipo_asistencia: null, // Se define después
           estado: true,
           status: true,
         });
@@ -64,30 +78,30 @@ export class AsistenciaService extends BaseService<Asistencia> {
     return await this.asistenciaRepo.save(nuevasAsistencias);
   }
 
+  // ===================================================
+  // MÉTODO: sincronizarAsistencias
+  // Agrega o elimina usuarios extras, manteniendo miembros
+  // ===================================================
   async sincronizarAsistencias(
     idSesion: number,
     usuariosSeleccionados: number[],
   ): Promise<void> {
-    const sesion = await this.sesionRepo.findOne({
-      where: { id_sesion: idSesion },
-    });
+    const sesion = await this.sesionRepo.findOne({ where: { id_sesion: idSesion } });
     if (!sesion) throw new BadRequestException('La sesión no existe.');
 
-    // IDs de los miembros oficiales del OCS
     const miembros = await this.miembroRepo.find({
       where: { estado: true, status: true },
       relations: ['usuario'],
     });
     const idsMiembros = miembros.map((m) => m.usuario.id_usuario);
 
-    // Asistencias registradas para la sesión actual
     const asistencias = await this.asistenciaRepo.find({
       where: { sesion: { id_sesion: idSesion } },
       relations: ['usuario'],
     });
     const idsAsistentesActuales = asistencias.map((a) => a.usuario.id_usuario);
 
-    // 🗑️ Eliminar asistencias que NO están en la lista nueva y NO son miembros
+    // 🗑️ Eliminar asistencias que no están seleccionadas ni son miembros
     for (const asistencia of asistencias) {
       const idUsuario = asistencia.usuario.id_usuario;
       if (
@@ -98,7 +112,7 @@ export class AsistenciaService extends BaseService<Asistencia> {
       }
     }
 
-    // ➕ Agregar asistencias nuevas (solo si no existen aún y no son miembros)
+    // ➕ Agregar nuevas asistencias de usuarios extra
     for (const idUsuario of usuariosSeleccionados) {
       if (
         !idsAsistentesActuales.includes(idUsuario) &&
@@ -106,7 +120,7 @@ export class AsistenciaService extends BaseService<Asistencia> {
       ) {
         const asistencia = this.asistenciaRepo.create({
           sesion,
-          usuario: { id_usuario: idUsuario } as Usuario, // solo necesitamos el ID
+          usuario: { id_usuario: idUsuario } as Usuario,
           tipo_asistencia: null,
           estado: true,
           status: true,
@@ -116,11 +130,14 @@ export class AsistenciaService extends BaseService<Asistencia> {
     }
   }
 
+  // ===================================================
+  // MÉTODO: eliminarAsistencias
+  // Borra todas las asistencias de una sesión
+  // ===================================================
   async eliminarAsistencias(idSesion: number): Promise<void> {
     const sesion = await this.sesionRepo.findOne({ where: { id_sesion: idSesion } });
     if (!sesion) throw new BadRequestException('La sesión no existe.');
-  
+
     await this.asistenciaRepo.delete({ sesion: { id_sesion: idSesion } });
   }
-  
 }

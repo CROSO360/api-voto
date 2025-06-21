@@ -1,3 +1,7 @@
+// =======================================================
+// IMPORTACIONES
+// =======================================================
+
 import {
   Body,
   Get,
@@ -11,9 +15,15 @@ import {
 import { BaseService } from './commons.service';
 import { AuthGuard } from 'src/auth/auth.guard';
 
+// =======================================================
+// CONTROLADOR BASE GENÉRICO
+// =======================================================
+
 export abstract class BaseController<T> {
+  // Cada controlador hijo debe implementar su servicio correspondiente
   abstract getService(): BaseService<T>;
 
+  // Obtener todos los registros, con relaciones opcionales
   @Get('all')
   @UseGuards(AuthGuard)
   async findAll(@Query() query: any): Promise<T[]> {
@@ -21,36 +31,36 @@ export abstract class BaseController<T> {
     return await this.getService().findAll(relations);
   }
 
+  // Buscar uno por ID
   @Get('find/:id')
   @UseGuards(AuthGuard)
   async findOne(@Param('id') id): Promise<T> {
     return await this.getService().findOne({ id });
   }
 
+  // Buscar uno por condición y relaciones
   @Get('findOneBy')
   @UseGuards(AuthGuard)
   async findOneBy(@Query() query?: any): Promise<T> {
-    const relations: string[] = query.relations
-      ? query.relations.split(',')
-      : [];
+    const relations: string[] = query.relations ? query.relations.split(',') : [];
     const filteredQuery = { ...query };
     delete filteredQuery.relations;
 
     return await this.getService().findOneBy(filteredQuery, relations);
   }
 
+  // Buscar múltiples por condición y relaciones
   @Get('findAllBy')
   @UseGuards(AuthGuard)
   async findAllBy(@Query() query?: any): Promise<T[]> {
-    const relations: string[] = query.relations
-      ? query.relations.split(',')
-      : [];
+    const relations: string[] = query.relations ? query.relations.split(',') : [];
     const filteredQuery = { ...query };
     delete filteredQuery.relations;
 
     return await this.getService().findAllBy(filteredQuery, relations);
   }
 
+  // Guardar un registro
   @Post('save')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.CREATED)
@@ -58,6 +68,7 @@ export abstract class BaseController<T> {
     return await this.getService().save(entity);
   }
 
+  // Guardar múltiples registros
   @Post('save/many')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.CREATED)
@@ -65,6 +76,7 @@ export abstract class BaseController<T> {
     return await this.getService().saveMany(entities);
   }
 
+  // Eliminar un registro
   @Post('delete/:id')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.OK)
@@ -72,6 +84,7 @@ export abstract class BaseController<T> {
     return this.getService().delete(id);
   }
 
+  // Contar registros
   @Get('count')
   @UseGuards(AuthGuard)
   async count(): Promise<number> {
