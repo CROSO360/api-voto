@@ -10,6 +10,7 @@ dotenv.config(); // Cargar variables de entorno
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.setGlobalPrefix('api');
 
   // Configuración de CORS para clientes web y móvil
   const corsOptions = {
