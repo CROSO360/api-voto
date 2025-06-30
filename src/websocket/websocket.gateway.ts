@@ -13,7 +13,7 @@ import { Server, Socket } from 'socket.io';
 
 @WebSocketGateway({
   namespace: '/', // Se usa el espacio raíz
-  path: '/api/socket.io', // Path personalizado para integrarse con NGINX
+  path: '/socket.io', // Path personalizado para integrarse con NGINX
   cors: {
     origin: [
       process.env.VOTACION_OCS_URL,     // Frontend escritorio
