@@ -5,6 +5,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import * as dotenv from 'dotenv';
+import { createServer } from 'http';
 
 dotenv.config(); // Cargar variables de entorno
 
@@ -25,8 +26,12 @@ async function bootstrap() {
 
   app.enableCors(corsOptions);
 
+  // Aquí se expone manualmente el servidor HTTP
+  const httpServer = createServer(app.getHttpAdapter().getInstance());
+
   // Iniciar servidor
   const PORT = process.env.PORT || 3000;
+  await app.init();
   await app.listen(PORT);
 }
 bootstrap();
