@@ -15,10 +15,7 @@ async function bootstrap() {
 
   // Configuración de CORS para clientes web y móvil
   const corsOptions = {
-    origin: [
-      process.env.VOTACION_OCS_URL,
-      process.env.VOTO_MOVIL_OCS_URL,
-    ],
+    origin: [process.env.VOTACION_OCS_URL, process.env.VOTO_MOVIL_OCS_URL],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     allowedHeaders: 'Origin,Accept,Content-Type,Authorization',
     credentials: true,
@@ -32,6 +29,8 @@ async function bootstrap() {
   // Iniciar servidor
   const PORT = process.env.PORT || 3000;
   await app.init();
-  await app.listen(PORT);
+  httpServer.listen(PORT, () => {
+    console.log(`🚀 Servidor escuchando en puerto ${PORT}`);
+  });
 }
 bootstrap();
