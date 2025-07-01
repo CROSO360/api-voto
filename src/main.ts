@@ -6,6 +6,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import * as dotenv from 'dotenv';
 import { createServer } from 'http';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 
 dotenv.config(); // Cargar variables de entorno
 
@@ -23,14 +24,10 @@ async function bootstrap() {
 
   app.enableCors(corsOptions);
 
-  // Aquí se expone manualmente el servidor HTTP
-  const httpServer = createServer(app.getHttpAdapter().getInstance());
+  // MUY IMPORTANTE: usar el adaptador de WebSocket
+  app.useWebSocketAdapter(new IoAdapter(app));
 
-  // Iniciar servidor
   const PORT = process.env.PORT || 3000;
-  await app.init();
-  httpServer.listen(PORT, () => {
-    console.log(`🚀 Servidor escuchando en puerto ${PORT}`);
-  });
+  await app.listen(PORT);
 }
 bootstrap();
