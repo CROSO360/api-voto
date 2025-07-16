@@ -85,6 +85,7 @@ export class Usuario {
   @ManyToOne(() => Facultad, (facultad) => facultad.usuarios)
   @JoinColumn({ name: 'id_facultad' })
   facultad: Facultad;
+  
 
   /**
    * Vínculo a asistencias registradas.

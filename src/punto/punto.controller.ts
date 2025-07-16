@@ -107,7 +107,8 @@ export class PuntoController {
   @Post('reordenar')
   @UseGuards(AuthGuard)
   async moverPunto(
-    @Body() body: {
+    @Body()
+    body: {
       idPunto: number;
       posicionInicial: number;
       posicionFinal: number;
@@ -120,15 +121,37 @@ export class PuntoController {
     );
   }
 
+  // POST /punto/reconsideracion/:id
+  @Post('reconsideracion/:id')
+  @UseGuards(AuthGuard)
+  async crearReconsideracion(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<Punto> {
+    return this.puntoService.crearReconsideracion(id);
+  }
+
+  // POST /punto/reconsideracion/:id/aprobar
+  @Post('reconsideracion/aprobar/:id')
+  @UseGuards(AuthGuard)
+  async aprobarReconsideracion(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<Punto> {
+    return this.puntoService.aprobarReconsideracion(id);
+  }
+
   // ===============================
   // RESULTADOS
   // ===============================
 
-  @Post('calcular-resultados/:id')
-  async calcularResultados(@Param('id', ParseIntPipe) id: number) {
-    await this.puntoService.calcularResultados(id);
-    return { message: 'Resultados actualizados correctamente' };
-  }
+  @Post('calcular-resultados/:idPunto/:idUsuario')
+async calcularResultados(
+  @Param('idPunto', ParseIntPipe) idPunto: number,
+  @Param('idUsuario', ParseIntPipe) idUsuario: number,
+) {
+  await this.puntoService.calcularResultados(idPunto, idUsuario);
+  return { message: 'Resultados actualizados correctamente' };
+}
+
 
   @Post('resultado-manual')
   @UseGuards(AuthGuard)

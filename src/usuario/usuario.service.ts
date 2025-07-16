@@ -2,7 +2,12 @@
 // Importaciones
 // ==============================
 
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Not, Repository } from 'typeorm';
 import { Usuario } from './usuario.entity';
@@ -80,6 +85,9 @@ export class UsuarioService {
    * Crea un nuevo usuario.
    */
   async createUsuario(createUsuarioDto: CreateUsuarioDto): Promise<Usuario> {
+    if (await this.isCedulaDuplicada(createUsuarioDto.cedula)) {
+      throw new BadRequestException('Ya existe un usuario con esta cédula.');
+    }
     const usuario = this.usuarioRepo.create(createUsuarioDto);
     return this.usuarioRepo.save(usuario);
   }
@@ -88,6 +96,10 @@ export class UsuarioService {
    * Actualiza un usuario, con re-encriptación de cédula si ha cambiado.
    */
   async updateUsuario(entity: Usuario): Promise<Usuario> {
+    if (await this.isCedulaDuplicada(entity.cedula)) {
+      throw new BadRequestException('Ya existe un usuario con esta cédula.');
+    }
+
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) {
       throw new Error('ENCRYPTION_KEY no está definida en el entorno.');
@@ -219,9 +231,43 @@ export class UsuarioService {
     });
   }
 
+  async generarCodigoUnicoUsuario(): Promise<string> {
+    for (let i = 0; i < 10; i++) {
+      const codigo = this.generarCodigoUsuario();
+
+      try {
+        const existe = await this.usuarioRepo.exist({ where: { codigo } });
+        if (!existe) return codigo;
+      } catch (error: any) {
+        if (error.code === 'ER_DUP_ENTRY') {
+          continue; // Intentamos otro código
+        }
+        throw new InternalServerErrorException(
+          'Error al verificar el código de usuario',
+        );
+      }
+    }
+
+    throw new ConflictException(
+      'No se pudo generar un código único de usuario',
+    );
+  }
+
   // ==============================
   // Métodos privados
   // ==============================
+
+  private generarCodigoUsuario(): string {
+    const letras = Array.from({ length: 3 }, () =>
+      String.fromCharCode(65 + Math.floor(Math.random() * 26)),
+    ).join('');
+
+    const numeros = Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, '0');
+
+    return `U-${letras}${numeros}`;
+  }
 
   /**
    * Procesa un usuario individual: desencripta cédula y elimina contraseña si no se requiere.
@@ -251,4 +297,34 @@ export class UsuarioService {
   private async processUsers(users: Usuario[]): Promise<Usuario[]> {
     return Promise.all(users.map((user) => this.processUser(user)));
   }
+
+  private async isCedulaDuplicada(cedula: string, idUsuarioActual?: number): Promise<boolean> {
+  const usuarios = await this.usuarioRepo.find();
+
+  for (const user of usuarios) {
+    if (!user.cedula) continue; // 🛡️ Salta si la cédula está vacía
+
+    let decrypted: string;
+
+    try {
+      decrypted = CryptoJS.AES.decrypt(
+        user.cedula,
+        process.env.ENCRYPTION_KEY
+      ).toString(CryptoJS.enc.Utf8);
+    } catch (e) {
+      console.warn(`No se pudo desencriptar cédula del usuario ID ${user.id_usuario}`);
+      continue; // 🛡️ Salta si el dato no se puede desencriptar
+    }
+
+    if (
+      decrypted === cedula &&
+      (!idUsuarioActual || user.id_usuario !== idUsuarioActual)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 }

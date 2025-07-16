@@ -31,6 +31,8 @@ import { DocumentoModule } from './documento/documento.module';
 import { SesionDocumentoModule } from './sesion-documento/sesion-documento.module';
 import { PuntoDocumentoModule } from './punto-documento/punto-documento.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
+import { GrupoModule } from './grupo/grupo.module';
+import { PuntoGrupoModule } from './punto-grupo/punto-grupo.module';
 
 @Module({
   imports: [
@@ -66,6 +68,8 @@ import { AuditoriaModule } from './auditoria/auditoria.module';
     MiembroModule,
     FacultadModule,
     AuditoriaModule,
+    GrupoModule,
+    PuntoGrupoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

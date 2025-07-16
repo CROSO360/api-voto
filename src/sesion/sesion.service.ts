@@ -2,7 +2,7 @@
 // Importaciones
 // ==============================
 
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as PdfPrinter from 'pdfmake';
@@ -272,5 +272,35 @@ export class SesionService extends BaseService<Sesion> {
 
     const buffer = fs.readFileSync(rutaArchivo);
     return buffer;
+  }
+
+  async generarCodigoUnicoSesion(): Promise<string> {
+    for (let i = 0; i < 10; i++) {
+      const codigo = this.generarCodigoSesion();
+
+      try {
+        const existe = await this.sesionRepo.exist({ where: { codigo } });
+        if (!existe) return codigo;
+      } catch (error: any) {
+        if (error.code === 'ER_DUP_ENTRY') {
+          continue;
+        }
+        throw new InternalServerErrorException('Error al verificar el código de sesión');
+      }
+    }
+
+    throw new ConflictException('No se pudo generar un código único de sesión');
+  }
+
+  private generarCodigoSesion(): string {
+    const letras = Array.from({ length: 3 }, () =>
+      String.fromCharCode(65 + Math.floor(Math.random() * 26)),
+    ).join('');
+
+    const numeros = Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, '0');
+
+    return `S-${letras}${numeros}`;
   }
 }

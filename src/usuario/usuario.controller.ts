@@ -132,4 +132,14 @@ export class UsuarioController {
   async delete(@Param('id') id: number): Promise<void> {
     return this.usuarioService.deleteUsuario(id);
   }
+
+  @Get('generar-codigo')
+  async generarCodigo() {
+    try {
+      const codigo = await this.usuarioService.generarCodigoUnicoUsuario();
+      return { codigo };
+    } catch (error) {
+      throw error;
+    }
+  }
 }

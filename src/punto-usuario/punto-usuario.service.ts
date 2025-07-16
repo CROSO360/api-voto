@@ -16,6 +16,10 @@ import { BaseService } from 'src/commons/commons.service';
 import { SesionService } from 'src/sesion/sesion.service';
 import { Punto } from 'src/punto/punto.entity';
 import { Miembro } from 'src/miembro/miembro.entity';
+import { Grupo } from 'src/grupo/grupo.entity';
+import { VotarGrupoDto, VotarGrupoRespuesta } from 'src/auth/dto/votar-grupo.dto';
+import { WebsocketGateway } from 'src/websocket/websocket.gateway';
+import { Usuario } from 'src/usuario/usuario.entity';
 
 // =======================================================
 // SERVICIO: PuntoUsuarioService
@@ -30,11 +34,18 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
     @InjectRepository(Punto)
     private readonly puntoRepo: Repository<Punto>,
 
+    @InjectRepository(Usuario)
+    private readonly usuarioRepo: Repository<Usuario>,
+
     @InjectRepository(Miembro)
     private readonly miembroRepo: Repository<Miembro>,
 
+    @InjectRepository(Grupo)
+    private readonly grupoRepository: Repository<Grupo>,
+
     private readonly sesionService: SesionService,
     private dataSource: DataSource,
+    private readonly websocketGateway: WebsocketGateway,
   ) {
     super();
   }
@@ -130,37 +141,57 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
   // ===================================================
 
   async validarVoto(
-    codigo: string,
-    idUsuario: number,
-    punto: number,
-    opcion: string | null,
-    es_razonado: boolean,
-    votante: number,
-  ): Promise<number> {
+  codigo: string,
+  id_usuario: number,
+  punto: number,
+  opcion: string | null,
+  es_razonado: boolean,
+  votante: number,
+): Promise<number> {
+  try {
+    console.log('DTO recibido:', {
+      codigo,
+      id_usuario,
+      punto,
+      opcion,
+      es_razonado,
+      votante,
+    });
+
     const sesion = await this.sesionService.findOneBy({ codigo }, []);
+    //console.log('Sesión encontrada:', sesion);
 
     if (
       sesion &&
-      idUsuario &&
+      id_usuario &&
       punto &&
-      (opcion === 'afavor' ||
-        opcion === 'encontra' ||
-        opcion === 'abstencion' ||
-        opcion === null)
+      (opcion === 'afavor' || opcion === 'encontra' || opcion === 'abstencion' || opcion === null)
     ) {
       const puntoUsuario = await this.findOneBy(
         {
           punto: { id_punto: punto },
-          usuario: { id_usuario: idUsuario },
+          usuario: { id_usuario },
         },
         ['punto', 'usuario'],
       );
+
+      //console.log('PuntoUsuario encontrado:', puntoUsuario);
+
+      if (!puntoUsuario) {
+        throw new NotFoundException('Voto no disponible para este usuario y punto');
+      }
+
+      const votanteEntity = await this.usuarioRepo.findOne({
+        where: { id_usuario: votante },
+      });
+
+      if (!votanteEntity) throw new NotFoundException('Votante no encontrado');
 
       const puntoUsuarioData: any = {
         id_punto_usuario: puntoUsuario.id_punto_usuario,
         opcion,
         es_razonado,
-        votante: { id_usuario: votante },
+        votante: votanteEntity,
         fecha: new Date(),
       };
 
@@ -169,7 +200,76 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
     }
 
     throw new UnauthorizedException('Campos del voto incorrectos');
+  } catch (err) {
+    console.error('❌ Error en validarVoto:', err);
+    throw err;
   }
+}
+
+
+
+  async votarGrupo(idGrupo: number, dto: VotarGrupoDto): Promise<VotarGrupoRespuesta> {
+  const grupo = await this.grupoRepository.findOne({
+    where: { id_grupo: idGrupo },
+    relations: ['puntoGrupos', 'puntoGrupos.punto'],
+  });
+
+  if (!grupo) throw new NotFoundException('Grupo no encontrado');
+
+  const queryRunner = this.dataSource.createQueryRunner();
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
+
+  try {
+    const resultados: number[] = [];
+
+    for (const pg of grupo.puntoGrupos) {
+      const puntoUsuario = await this.findOneBy(
+        {
+          punto: { id_punto: pg.punto.id_punto },
+          usuario: { id_usuario: dto.idUsuario },
+        },
+        ['punto', 'usuario'],
+      );
+
+      if (!puntoUsuario) {
+        throw new NotFoundException(`Voto no disponible para punto ${pg.punto.id_punto}`);
+      }
+
+      const puntoUsuarioData: any = {
+        id_punto_usuario: puntoUsuario.id_punto_usuario,
+        opcion: dto.opcion,
+        es_razonado: dto.es_razonado,
+        votante: { id_usuario: dto.votante },
+        fecha: new Date(),
+      };
+
+      await queryRunner.manager.save(PuntoUsuario, puntoUsuarioData);
+      resultados.push(puntoUsuario.id_punto_usuario);
+    }
+
+    await queryRunner.commitTransaction();
+
+    // Emitimos los cambios uno por uno
+    for (const id of resultados) {
+      this.websocketGateway.emitChange(id);
+    }
+
+    return {
+      mensaje: `Voto emitido en los puntos del grupo ${idGrupo}`,
+      ids: resultados,
+    };
+  } catch (error) {
+    console.error('Error al votar grupo:', error);
+    await queryRunner.rollbackTransaction();
+    throw new BadRequestException(`Error al votar grupo: ${error.message}`);
+  } finally {
+    await queryRunner.release();
+  }
+}
+
+
+
 
   // ===================================================
   // CAMBIO PRINCIPAL ↔ REEMPLAZO

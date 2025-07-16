@@ -7,7 +7,7 @@ import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class VotoDto {
   @IsNumber()
-  id_usuario: number;
+  idUsuario: number;
 
   @IsNumber()
   votante: number;

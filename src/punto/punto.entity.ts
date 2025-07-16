@@ -15,6 +15,7 @@ import { Sesion } from 'src/sesion/sesion.entity';
 import { Resolucion } from 'src/resolucion/resolucion.entity';
 import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
 import { PuntoDocumento } from 'src/punto-documento/punto-documento.entity';
+import { PuntoGrupo } from 'src/punto-grupo/punto-grupo.entity';
 
 // ==========================================
 // ENTIDAD: Punto
@@ -68,6 +69,16 @@ export class Punto {
   @Column()
   resultado: string;
 
+  @Column()
+  tipo: string;
+
+  @ManyToOne(() => Punto, (punto) => punto.puntoReconsiderado)
+  @JoinColumn({ name: 'id_punto_reconsiderado' })
+  puntoReconsiderado: Punto;
+
+  @Column()
+  requiere_voto_dirimente: boolean;
+
   // ===========================
   // Control de estado
   // ===========================
@@ -88,4 +99,7 @@ export class Punto {
 
   @OneToOne(() => Resolucion, resolucion => resolucion.punto)
   resolucion: Resolucion;
+
+  @OneToOne(() => PuntoGrupo, puntoGrupo => puntoGrupo.punto)
+  puntoGrupos: PuntoGrupo;
 }

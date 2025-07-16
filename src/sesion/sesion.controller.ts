@@ -70,4 +70,15 @@ export class SesionController extends BaseController<Sesion> {
       );
     }
   }
+
+  @Get('generar-codigo')
+  async generarCodigo() {
+    try {
+      const codigo = await this.sesionService.generarCodigoUnicoSesion();
+      return { codigo };
+    } catch (error) {
+      throw error;
+    }
+  }
+  
 }

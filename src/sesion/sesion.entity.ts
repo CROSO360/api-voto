@@ -7,6 +7,7 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
 import { Asistencia } from 'src/asistencia/asistencia.entity';
 import { Punto } from 'src/punto/punto.entity';
 import { SesionDocumento } from 'src/sesion-documento/sesion-documento.entity';
+import { Grupo } from 'src/grupo/grupo.entity';
 
 // ==============================
 // Entidad: Sesion
@@ -54,6 +55,9 @@ export class Sesion {
    */
   @OneToMany(() => Punto, punto => punto.sesion)
   puntos: Punto[];
+
+  @OneToMany(() => Grupo, grupo => grupo.sesion)
+  grupos: Grupo[];
 
   /**
    * Asistencias registradas para esta sesión.

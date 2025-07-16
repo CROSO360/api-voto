@@ -19,6 +19,7 @@ import { BaseController } from 'src/commons/commons.controller';
 import { BaseService } from 'src/commons/commons.service';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { VotoDto } from 'src/auth/dto/voto.dto';
+import { VotarGrupoDto, VotarGrupoRespuesta } from 'src/auth/dto/votar-grupo.dto';
 
 // =======================================================
 // CONTROLADOR: PuntoUsuarioController
@@ -64,7 +65,7 @@ export class PuntoUsuarioController extends BaseController<PuntoUsuario> {
   async voto(@Body() votoDto: VotoDto): Promise<void> {
     const idPU = await this.puntoUsuarioService.validarVoto(
       votoDto.codigo,
-      votoDto.id_usuario,
+      votoDto.idUsuario,
       votoDto.punto,
       votoDto.opcion,
       votoDto.es_razonado,
@@ -73,6 +74,16 @@ export class PuntoUsuarioController extends BaseController<PuntoUsuario> {
 
     this.websocketGateway.emitChange(idPU);
   }
+
+  @Post('votar-grupo/:idGrupo')
+  @UseGuards(AuthGuard)
+  async votarGrupo(
+    @Param('idGrupo', ParseIntPipe) idGrupo: number,
+    @Body() dto: VotarGrupoDto,
+  ): Promise<VotarGrupoRespuesta> {
+    return this.puntoUsuarioService.votarGrupo(idGrupo, dto);
+  }
+
 
   // ===================================================
   // CAMBIO PRINCIPAL ↔ REEMPLAZO

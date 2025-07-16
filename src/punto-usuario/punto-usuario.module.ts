@@ -13,6 +13,8 @@ import { WebsocketGateway } from 'src/websocket/websocket.gateway';
 import { SesionModule } from 'src/sesion/sesion.module';
 import { Punto } from 'src/punto/punto.entity';
 import { Miembro } from 'src/miembro/miembro.entity';
+import { Grupo } from 'src/grupo/grupo.entity';
+import { Usuario } from 'src/usuario/usuario.entity';
 
 // =======================================================
 // MÓDULO: PuntoUsuarioModule
@@ -20,7 +22,7 @@ import { Miembro } from 'src/miembro/miembro.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PuntoUsuario, Punto, Miembro]),
+    TypeOrmModule.forFeature([PuntoUsuario, Punto, Miembro, Grupo, Usuario]),
     SesionModule,
   ],
   providers: [
