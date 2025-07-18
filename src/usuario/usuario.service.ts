@@ -95,35 +95,41 @@ export class UsuarioService {
   /**
    * Actualiza un usuario, con re-encriptación de cédula si ha cambiado.
    */
-  async updateUsuario(entity: Usuario): Promise<Usuario> {
-    if (await this.isCedulaDuplicada(entity.cedula)) {
-      throw new BadRequestException('Ya existe un usuario con esta cédula.');
-    }
-
-    const encryptionKey = process.env.ENCRYPTION_KEY;
-    if (!encryptionKey) {
-      throw new Error('ENCRYPTION_KEY no está definida en el entorno.');
-    }
-
-    const existingUser = await this.usuarioRepo.findOne({
-      where: { id_usuario: entity.id_usuario },
-    });
-
-    if (!existingUser) {
-      throw new Error('Usuario no encontrado');
-    }
-
-    if (entity.cedula && entity.cedula !== existingUser.cedula) {
-      entity.cedula = CryptoJS.AES.encrypt(
-        entity.cedula,
-        encryptionKey,
-      ).toString();
-    } else {
-      entity.cedula = existingUser.cedula;
-    }
-
-    return await this.usuarioRepo.save(entity);
+  /**
+ * Actualiza un usuario, con re-encriptación de cédula si ha cambiado.
+ */
+async updateUsuario(entity: Usuario): Promise<Usuario> {
+  if (await this.isCedulaDuplicada(entity.cedula, entity.id_usuario)) {
+    throw new BadRequestException('Ya existe un usuario con esta cédula.');
   }
+
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    throw new Error('ENCRYPTION_KEY no está definida en el entorno.');
+  }
+
+  const existingUser = await this.usuarioRepo.findOne({
+    where: { id_usuario: entity.id_usuario },
+  });
+
+  if (!existingUser) {
+    throw new Error('Usuario no encontrado');
+  }
+
+  // Si la cédula cambió, la volvemos a encriptar
+  const cedulaDesencriptada = CryptoJS.AES.decrypt(
+    existingUser.cedula,
+    encryptionKey
+  ).toString(CryptoJS.enc.Utf8);
+
+  if (entity.cedula && entity.cedula !== cedulaDesencriptada) {
+    entity.cedula = CryptoJS.AES.encrypt(entity.cedula, encryptionKey).toString();
+  } else {
+    entity.cedula = existingUser.cedula;
+  }
+
+  return await this.usuarioRepo.save(entity);
+}
 
   /**
    * Elimina un usuario por ID.
@@ -298,33 +304,42 @@ export class UsuarioService {
     return Promise.all(users.map((user) => this.processUser(user)));
   }
 
-  private async isCedulaDuplicada(cedula: string, idUsuarioActual?: number): Promise<boolean> {
-  const usuarios = await this.usuarioRepo.find();
-
-  for (const user of usuarios) {
-    if (!user.cedula) continue; // 🛡️ Salta si la cédula está vacía
-
-    let decrypted: string;
-
-    try {
-      decrypted = CryptoJS.AES.decrypt(
-        user.cedula,
-        process.env.ENCRYPTION_KEY
-      ).toString(CryptoJS.enc.Utf8);
-    } catch (e) {
-      console.warn(`No se pudo desencriptar cédula del usuario ID ${user.id_usuario}`);
-      continue; // 🛡️ Salta si el dato no se puede desencriptar
+  private async isCedulaDuplicada(
+    cedula: string,
+    idUsuarioActual?: number,
+  ): Promise<boolean> {
+    const encryptionKey = process.env.ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error('ENCRYPTION_KEY no está definida en el entorno.');
     }
 
-    if (
-      decrypted === cedula &&
-      (!idUsuarioActual || user.id_usuario !== idUsuarioActual)
-    ) {
-      return true;
+    const usuarios = await this.usuarioRepo.find();
+
+    for (const user of usuarios) {
+      if (!user.cedula) continue; // ⚠️ Salta si no hay cédula almacenada
+
+      // ❗ Ignora el propio usuario si se está editando
+      if (idUsuarioActual && user.id_usuario === idUsuarioActual) {
+        continue;
+      }
+
+      try {
+        const decrypted = CryptoJS.AES.decrypt(
+          user.cedula,
+          encryptionKey,
+        ).toString(CryptoJS.enc.Utf8);
+
+        if (decrypted === cedula) {
+          return true;
+        }
+      } catch (e) {
+        console.warn(
+          `❌ Error al desencriptar cédula del usuario ID ${user.id_usuario}`,
+        );
+        continue;
+      }
     }
+
+    return false;
   }
-
-  return false;
-}
-
 }
