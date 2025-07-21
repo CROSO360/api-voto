@@ -19,6 +19,7 @@ import { Punto } from './punto.entity';
 import { CreatePuntoDto } from 'src/auth/dto/create-punto.dto';
 import { ResultadoManualDto } from 'src/auth/dto/resultado-manual.dto';
 import { AuthGuard } from 'src/auth/auth.guard';
+import { VotoDto } from 'src/auth/dto/voto.dto';
 
 // ==========================================
 // CONTROLADOR: PuntoController
@@ -144,14 +145,13 @@ export class PuntoController {
   // ===============================
 
   @Post('calcular-resultados/:idPunto/:idUsuario')
-async calcularResultados(
-  @Param('idPunto', ParseIntPipe) idPunto: number,
-  @Param('idUsuario', ParseIntPipe) idUsuario: number,
-) {
-  await this.puntoService.calcularResultados(idPunto, idUsuario);
-  return { message: 'Resultados actualizados correctamente' };
-}
-
+  async calcularResultados(
+    @Param('idPunto', ParseIntPipe) idPunto: number,
+    @Param('idUsuario', ParseIntPipe) idUsuario: number,
+  ) {
+    await this.puntoService.calcularResultados(idPunto, idUsuario);
+    return { message: 'Resultados actualizados correctamente' };
+  }
 
   @Post('resultado-manual')
   @UseGuards(AuthGuard)
@@ -163,5 +163,14 @@ async calcularResultados(
   @UseGuards(AuthGuard)
   async getResultadoPunto(@Param('idPunto') idPunto: number): Promise<any> {
     return await this.puntoService.getResultadosPunto(idPunto);
+  }
+
+  @Post('resultado-hibrido/:idPunto')
+  @UseGuards(AuthGuard)
+  async calcularResultadosHibrido(
+    @Param('idPunto', ParseIntPipe) idPunto: number,
+    @Body() votos: VotoDto[],
+  ): Promise<void> {
+    await this.puntoService.calcularResultadosHibrido(idPunto, votos);
   }
 }

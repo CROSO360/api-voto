@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
   DataSource,
+  EntityManager,
   FindManyOptions,
   QueryFailedError,
   Repository,
@@ -25,6 +26,8 @@ import { BaseService } from 'src/commons/commons.service';
 import { CreatePuntoDto } from 'src/auth/dto/create-punto.dto';
 import { ResultadoManualDto } from 'src/auth/dto/resultado-manual.dto';
 import { Miembro } from 'src/miembro/miembro.entity';
+import { VotoDto } from 'src/auth/dto/voto.dto';
+import { Usuario } from 'src/usuario/usuario.entity';
 
 // ==========================================
 // SERVICIO: PuntoService
@@ -446,10 +449,16 @@ export class PuntoService {
 
     const puntoUsuarios = miembros.map((miembro) => {
       const usuario = miembro.usuario;
-      const esTrabajador =
-        usuario.grupoUsuario?.nombre?.toLowerCase() === 'trabajador';
+      const grupoNombre = usuario.grupoUsuario?.nombre?.toLowerCase();
+
+      const esTrabajador = grupoNombre === 'trabajador';
+      const esRector = grupoNombre === 'rector';
+
       const estado =
-        puntoOriginal.es_administrativa && esTrabajador ? false : true;
+        puntoOriginal.es_administrativa && (esTrabajador || esRector)
+          ? false
+          : true;
+
       const es_principal = mapaEsPrincipal[usuario.id_usuario] ?? true;
 
       return this.puntoUsuarioRepo.create({
@@ -548,10 +557,16 @@ export class PuntoService {
 
     const puntoUsuarios = miembros.map((miembro) => {
       const usuario = miembro.usuario;
-      const esTrabajador =
-        usuario.grupoUsuario?.nombre?.toLowerCase() === 'trabajador';
+      const grupoNombre = usuario.grupoUsuario?.nombre?.toLowerCase();
+
+      const esTrabajador = grupoNombre === 'trabajador';
+      const esRector = grupoNombre === 'rector';
+
       const estado =
-        puntoOriginal.es_administrativa && esTrabajador ? false : true;
+        puntoOriginal.es_administrativa && (esTrabajador || esRector)
+          ? false
+          : true;
+
       const es_principal = mapaEsPrincipal[usuario.id_usuario] ?? true;
 
       return this.puntoUsuarioRepo.create({
@@ -846,6 +861,206 @@ export class PuntoService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  // ========================================
+  // CÁLCULO HIBRIDO DE RESULTADOS
+  // ========================================
+
+  async calcularResultadosHibrido(
+    idPunto: number,
+    votos: VotoDto[],
+  ): Promise<void> {
+    //console.log('📌 idPunto recibido:', idPunto);
+    //console.log('📥 votos:', votos);
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Verificar que el punto exista
+      const punto = await queryRunner.manager.findOne(Punto, {
+        where: { id_punto: idPunto },
+      });
+      if (!punto) {
+        throw new NotFoundException('Punto no encontrado');
+      }
+
+      // Procesar cada voto recibido
+      for (const voto of votos) {
+        const puntoVoto = +voto.punto;
+
+        if (puntoVoto !== idPunto) {
+          throw new BadRequestException(
+            `❌ Voto con punto inválido. Esperado: ${idPunto}, recibido: ${puntoVoto}`,
+          );
+        }
+
+        // Buscar el PuntoUsuario correspondiente
+        const puntoUsuario = await queryRunner.manager.findOne(PuntoUsuario, {
+          where: {
+            punto: { id_punto: idPunto },
+            usuario: { id_usuario: voto.idUsuario },
+          },
+          relations: ['usuario', 'punto'],
+        });
+
+        if (!puntoUsuario) {
+          throw new NotFoundException(
+            `No se encontró puntoUsuario para usuario ${voto.idUsuario}`,
+          );
+        }
+
+        // Verificar el votante
+        const votante = await queryRunner.manager.findOne(Usuario, {
+          where: { id_usuario: voto.votante },
+        });
+
+        if (!votante) {
+          throw new NotFoundException(
+            `Votante no encontrado: ID ${voto.votante}`,
+          );
+        }
+
+        // Asignar datos al puntoUsuario
+        puntoUsuario.opcion = voto.opcion;
+        puntoUsuario.es_razonado = voto.es_razonado;
+        puntoUsuario.votante = votante;
+        puntoUsuario.fecha = new Date();
+
+        // Guardar los cambios
+        await queryRunner.manager.save(PuntoUsuario, puntoUsuario);
+      }
+
+      // Calcular resultados con la transacción activa
+      await this._calcularResultadosInterno(
+        idPunto,
+        votos[0].idUsuario,
+        queryRunner.manager,
+      );
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error('❌ Error en calcularResultadosHibrido:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async _calcularResultadosInterno(
+    id_punto: number,
+    id_usuario: number,
+    manager: EntityManager,
+  ): Promise<void> {
+    // Establecer el usuario actual como variable de sesión SQL
+    await manager.query(`SET @usuario_actual = ${id_usuario}`);
+
+    // Cargar el punto con todas las relaciones necesarias
+    const punto = await manager.findOne(Punto, {
+      where: { id_punto },
+      relations: [
+        'resolucion',
+        'puntoUsuarios',
+        'puntoUsuarios.usuario',
+        'puntoUsuarios.usuario.grupoUsuario',
+      ],
+    });
+
+    if (!punto) throw new NotFoundException('Punto no encontrado');
+
+    // Filtrar los votos válidos
+    let puntoUsuarios = punto.puntoUsuarios.filter((pu) => pu.estado);
+
+    // Si es administrativo, excluir trabajadores
+    if (punto.es_administrativa) {
+      puntoUsuarios = puntoUsuarios.filter(
+        (pu) => pu.usuario.grupoUsuario.nombre.toLowerCase() !== 'trabajador',
+      );
+    }
+
+    // Variables de conteo
+    let n_afavor = 0,
+      n_encontra = 0,
+      n_abstencion = 0;
+    let p_afavor = 0,
+      p_encontra = 0,
+      p_abstencion = 0;
+    let totalPeso = 0;
+
+    // Contar votos y acumular pesos
+    for (const pu of puntoUsuarios) {
+      const peso = pu.usuario.grupoUsuario.peso || 0;
+      if (!pu.opcion || peso === 0) continue;
+
+      totalPeso += peso;
+
+      switch (pu.opcion) {
+        case 'afavor':
+          n_afavor++;
+          p_afavor += peso;
+          break;
+        case 'encontra':
+          n_encontra++;
+          p_encontra += peso;
+          break;
+        case 'abstencion':
+          n_abstencion++;
+          p_abstencion += peso;
+          break;
+      }
+    }
+
+    // Normalizador de porcentajes
+    const normalizar = (valor: number) =>
+      totalPeso > 0 ? parseFloat(((valor / totalPeso) * 100).toFixed(2)) : 0;
+
+    // Guardar resultados numéricos y porcentuales
+    punto.n_afavor = n_afavor;
+    punto.n_encontra = n_encontra;
+    punto.n_abstencion = n_abstencion;
+
+    punto.p_afavor = normalizar(p_afavor);
+    punto.p_encontra = normalizar(p_encontra);
+    punto.p_abstencion = normalizar(p_abstencion);
+
+    // Desmarcar cálculo manual si existía
+    if (punto.resolucion) {
+      await manager.update('resolucion', punto.resolucion.id_punto, {
+        voto_manual: false,
+      });
+    }
+
+    // Empate ponderado
+    if (p_afavor === p_encontra && p_afavor !== 0) {
+      punto.resultado = 'empate';
+
+      if (!punto.requiere_voto_dirimente) {
+        punto.requiere_voto_dirimente = true;
+
+        const rectorPU = punto.puntoUsuarios.find(
+          (pu) =>
+            pu.usuario.grupoUsuario.nombre.toLowerCase() === 'rector' &&
+            pu.estado === false,
+        );
+
+        if (rectorPU) {
+          rectorPU.estado = true;
+          await manager.save(PuntoUsuario, rectorPU);
+        }
+      }
+    } else if (p_afavor > p_encontra && p_afavor > p_abstencion) {
+      punto.resultado = 'aprobada';
+    } else if (p_encontra > p_afavor && p_encontra > p_abstencion) {
+      punto.resultado = 'rechazada';
+    } else {
+      punto.resultado = 'pendiente';
+    }
+
+    // Guardar el punto con sus resultados
+    await manager.save(punto);
   }
 
   // ========================================
