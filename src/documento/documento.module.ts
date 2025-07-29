@@ -29,7 +29,8 @@ import { Documento } from './documento.entity';
     //Configuración para subida de archivos
     MulterModule.register({
       storage: multer.diskStorage({
-        destination: './uploads',
+        //destination: './uploads', // Ruta donde se guardarán los archivos subidos LOCAL
+        destination: '/uploads', // Ruta donde se guardarán los archivos subidos en producción
         filename: (req, file, cb) => {
           const uniqueName = `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`;
           cb(null, uniqueName);
@@ -39,7 +40,8 @@ import { Documento } from './documento.entity';
 
     //Servir archivos estáticos en /subidas
     ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'uploads'),
+      //rootPath: join(process.cwd(), 'uploads'), // Ruta donde se guardan los archivos subidos LOCAL
+      rootPath: '/uploads', // Ruta donde se guardan los archivos subidos en producción
       serveRoot: '/api/subidas',
     }),
   ],
