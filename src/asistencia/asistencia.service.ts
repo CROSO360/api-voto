@@ -66,7 +66,7 @@ export class AsistenciaService extends BaseService<Asistencia> {
         const asistencia = this.asistenciaRepo.create({
           sesion,
           usuario: miembro.usuario,
-          tipo_asistencia: null, // Se define después
+          //tipo_asistencia: null, // Se define después
           estado: true,
           status: true,
         });

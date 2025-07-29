@@ -31,7 +31,7 @@ export class Asistencia {
   @JoinColumn({ name: 'id_usuario' })
   usuario: Usuario;
 
-  // Tipo de asistencia: presencial | remoto | ausente
+  // Tipo de asistencia: presente | remoto | ausente
   @Column()
   tipo_asistencia: string;
 

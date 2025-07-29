@@ -17,7 +17,10 @@ import { SesionService } from 'src/sesion/sesion.service';
 import { Punto } from 'src/punto/punto.entity';
 import { Miembro } from 'src/miembro/miembro.entity';
 import { Grupo } from 'src/grupo/grupo.entity';
-import { VotarGrupoDto, VotarGrupoRespuesta } from 'src/auth/dto/votar-grupo.dto';
+import {
+  VotarGrupoDto,
+  VotarGrupoRespuesta,
+} from 'src/auth/dto/votar-grupo.dto';
 import { WebsocketGateway } from 'src/websocket/websocket.gateway';
 import { Usuario } from 'src/usuario/usuario.entity';
 
@@ -141,135 +144,141 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
   // ===================================================
 
   async validarVoto(
-  codigo: string,
-  id_usuario: number,
-  punto: number,
-  opcion: string | null,
-  es_razonado: boolean,
-  votante: number,
-): Promise<number> {
-  try {
-    console.log('DTO recibido:', {
-      codigo,
-      id_usuario,
-      punto,
-      opcion,
-      es_razonado,
-      votante,
-    });
-
-    const sesion = await this.sesionService.findOneBy({ codigo }, []);
-    //console.log('Sesión encontrada:', sesion);
-
-    if (
-      sesion &&
-      id_usuario &&
-      punto &&
-      (opcion === 'afavor' || opcion === 'encontra' || opcion === 'abstencion' || opcion === null)
-    ) {
-      const puntoUsuario = await this.findOneBy(
-        {
-          punto: { id_punto: punto },
-          usuario: { id_usuario },
-        },
-        ['punto', 'usuario'],
-      );
-
-      //console.log('PuntoUsuario encontrado:', puntoUsuario);
-
-      if (!puntoUsuario) {
-        throw new NotFoundException('Voto no disponible para este usuario y punto');
-      }
-
-      const votanteEntity = await this.usuarioRepo.findOne({
-        where: { id_usuario: votante },
-      });
-
-      if (!votanteEntity) throw new NotFoundException('Votante no encontrado');
-
-      const puntoUsuarioData: any = {
-        id_punto_usuario: puntoUsuario.id_punto_usuario,
+    codigo: string,
+    id_usuario: number,
+    punto: number,
+    opcion: string | null,
+    es_razonado: boolean,
+    votante: number,
+  ): Promise<number> {
+    try {
+      console.log('DTO recibido:', {
+        codigo,
+        id_usuario,
+        punto,
         opcion,
         es_razonado,
-        votante: votanteEntity,
-        fecha: new Date(),
-      };
+        votante,
+      });
 
-      await this.save(puntoUsuarioData);
-      return puntoUsuario.id_punto_usuario;
-    }
+      const sesion = await this.sesionService.findOneBy({ codigo }, []);
+      //console.log('Sesión encontrada:', sesion);
 
-    throw new UnauthorizedException('Campos del voto incorrectos');
-  } catch (err) {
-    console.error('❌ Error en validarVoto:', err);
-    throw err;
-  }
-}
+      if (
+        sesion &&
+        id_usuario &&
+        punto &&
+        (opcion === 'afavor' ||
+          opcion === 'encontra' ||
+          opcion === 'abstencion' ||
+          opcion === null)
+      ) {
+        const puntoUsuario = await this.findOneBy(
+          {
+            punto: { id_punto: punto },
+            usuario: { id_usuario },
+          },
+          ['punto', 'usuario'],
+        );
 
+        //console.log('PuntoUsuario encontrado:', puntoUsuario);
 
+        if (!puntoUsuario) {
+          throw new NotFoundException(
+            'Voto no disponible para este usuario y punto',
+          );
+        }
 
-  async votarGrupo(idGrupo: number, dto: VotarGrupoDto): Promise<VotarGrupoRespuesta> {
-  const grupo = await this.grupoRepository.findOne({
-    where: { id_grupo: idGrupo },
-    relations: ['puntoGrupos', 'puntoGrupos.punto'],
-  });
+        const votanteEntity = await this.usuarioRepo.findOne({
+          where: { id_usuario: votante },
+        });
 
-  if (!grupo) throw new NotFoundException('Grupo no encontrado');
+        if (!votanteEntity)
+          throw new NotFoundException('Votante no encontrado');
 
-  const queryRunner = this.dataSource.createQueryRunner();
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
+        const puntoUsuarioData: any = {
+          id_punto_usuario: puntoUsuario.id_punto_usuario,
+          opcion,
+          es_razonado,
+          votante: votanteEntity,
+          fecha: new Date(),
+        };
 
-  try {
-    const resultados: number[] = [];
-
-    for (const pg of grupo.puntoGrupos) {
-      const puntoUsuario = await this.findOneBy(
-        {
-          punto: { id_punto: pg.punto.id_punto },
-          usuario: { id_usuario: dto.idUsuario },
-        },
-        ['punto', 'usuario'],
-      );
-
-      if (!puntoUsuario) {
-        throw new NotFoundException(`Voto no disponible para punto ${pg.punto.id_punto}`);
+        await this.save(puntoUsuarioData);
+        return puntoUsuario.id_punto_usuario;
       }
 
-      const puntoUsuarioData: any = {
-        id_punto_usuario: puntoUsuario.id_punto_usuario,
-        opcion: dto.opcion,
-        es_razonado: dto.es_razonado,
-        votante: { id_usuario: dto.votante },
-        fecha: new Date(),
-      };
-
-      await queryRunner.manager.save(PuntoUsuario, puntoUsuarioData);
-      resultados.push(puntoUsuario.id_punto_usuario);
+      throw new UnauthorizedException('Campos del voto incorrectos');
+    } catch (err) {
+      console.error('❌ Error en validarVoto:', err);
+      throw err;
     }
-
-    await queryRunner.commitTransaction();
-
-    // Emitimos los cambios uno por uno
-    for (const id of resultados) {
-      this.websocketGateway.emitChange(id);
-    }
-
-    return {
-      mensaje: `Voto emitido en los puntos del grupo ${idGrupo}`,
-      ids: resultados,
-    };
-  } catch (error) {
-    console.error('Error al votar grupo:', error);
-    await queryRunner.rollbackTransaction();
-    throw new BadRequestException(`Error al votar grupo: ${error.message}`);
-  } finally {
-    await queryRunner.release();
   }
-}
 
+  async votarGrupo(
+    idGrupo: number,
+    dto: VotarGrupoDto,
+  ): Promise<VotarGrupoRespuesta> {
+    const grupo = await this.grupoRepository.findOne({
+      where: { id_grupo: idGrupo },
+      relations: ['puntoGrupos', 'puntoGrupos.punto'],
+    });
 
+    if (!grupo) throw new NotFoundException('Grupo no encontrado');
 
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const resultados: number[] = [];
+
+      for (const pg of grupo.puntoGrupos) {
+        const puntoUsuario = await this.findOneBy(
+          {
+            punto: { id_punto: pg.punto.id_punto },
+            usuario: { id_usuario: dto.idUsuario },
+          },
+          ['punto', 'usuario'],
+        );
+
+        if (!puntoUsuario) {
+          throw new NotFoundException(
+            `Voto no disponible para punto ${pg.punto.id_punto}`,
+          );
+        }
+
+        const puntoUsuarioData: any = {
+          id_punto_usuario: puntoUsuario.id_punto_usuario,
+          opcion: dto.opcion,
+          es_razonado: dto.es_razonado,
+          votante: { id_usuario: dto.votante },
+          fecha: new Date(),
+        };
+
+        await queryRunner.manager.save(PuntoUsuario, puntoUsuarioData);
+        resultados.push(puntoUsuario.id_punto_usuario);
+      }
+
+      await queryRunner.commitTransaction();
+
+      // Emitimos los cambios uno por uno
+      for (const id of resultados) {
+        this.websocketGateway.emitChange(id);
+      }
+
+      return {
+        mensaje: `Voto emitido en los puntos del grupo ${idGrupo}`,
+        ids: resultados,
+      };
+    } catch (error) {
+      console.error('Error al votar grupo:', error);
+      await queryRunner.rollbackTransaction();
+      throw new BadRequestException(`Error al votar grupo: ${error.message}`);
+    } finally {
+      await queryRunner.release();
+    }
+  }
 
   // ===================================================
   // CAMBIO PRINCIPAL ↔ REEMPLAZO
@@ -292,9 +301,16 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
 
     for (const punto of puntos) {
       for (const pu of punto.puntoUsuarios) {
-        const esTitular = pu.usuario.id_usuario === idUsuario;
-        const esReemplazo =
-          pu.usuario.usuarioReemplazo?.id_usuario === idUsuario;
+        const usuario = pu.usuario;
+        const esTitular = usuario.id_usuario === idUsuario;
+        const esReemplazo = usuario.usuarioReemplazo?.id_usuario === idUsuario;
+
+        // Validar que el titular tenga reemplazo antes de cambiar
+        if (esTitular && !usuario.usuarioReemplazo) {
+          throw new BadRequestException(
+            `El usuario ${usuario.nombre} no tiene un reemplazo asignado.`,
+          );
+        }
 
         if (esTitular || esReemplazo) {
           pu.es_principal = !pu.es_principal;

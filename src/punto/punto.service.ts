@@ -449,16 +449,15 @@ export class PuntoService {
 
     const puntoUsuarios = miembros.map((miembro) => {
       const usuario = miembro.usuario;
-      const grupoNombre = usuario.grupoUsuario?.nombre?.toLowerCase();
+      const grupoNombre = usuario.grupoUsuario?.nombre?.toLowerCase() || '';
 
       const esTrabajador = grupoNombre === 'trabajador';
       const esRector = grupoNombre === 'rector';
 
-      const estado =
-        puntoOriginal.es_administrativa && (esTrabajador || esRector)
-          ? false
-          : true;
+      const es_administrativa_invalida =
+        puntoOriginal.es_administrativa && esTrabajador;
 
+      const estado = esRector ? false : !es_administrativa_invalida;
       const es_principal = mapaEsPrincipal[usuario.id_usuario] ?? true;
 
       return this.puntoUsuarioRepo.create({
@@ -557,16 +556,15 @@ export class PuntoService {
 
     const puntoUsuarios = miembros.map((miembro) => {
       const usuario = miembro.usuario;
-      const grupoNombre = usuario.grupoUsuario?.nombre?.toLowerCase();
+      const grupoNombre = usuario.grupoUsuario?.nombre?.toLowerCase() || '';
 
       const esTrabajador = grupoNombre === 'trabajador';
       const esRector = grupoNombre === 'rector';
 
-      const estado =
-        puntoOriginal.es_administrativa && (esTrabajador || esRector)
-          ? false
-          : true;
+      const es_administrativa_invalida =
+        puntoOriginal.es_administrativa && esTrabajador;
 
+      const estado = esRector ? false : !es_administrativa_invalida;
       const es_principal = mapaEsPrincipal[usuario.id_usuario] ?? true;
 
       return this.puntoUsuarioRepo.create({
@@ -700,6 +698,7 @@ export class PuntoService {
         punto.resultado = 'pendiente';
       }
 
+      punto.estado = false; 
       await queryRunner.manager.save(punto);
       await queryRunner.commitTransaction();
     } catch (error) {
@@ -850,6 +849,7 @@ export class PuntoService {
     await queryRunner.startTransaction();
 
     try {
+      punto.estado = false; 
       await queryRunner.query(`SET @usuario_actual = ?`, [id_usuario]);
       await queryRunner.manager.save(punto.resolucion);
       await queryRunner.manager.save(punto);
@@ -1060,6 +1060,7 @@ export class PuntoService {
     }
 
     // Guardar el punto con sus resultados
+    punto.estado = false; 
     await manager.save(punto);
   }
 

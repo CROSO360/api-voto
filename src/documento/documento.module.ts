@@ -40,7 +40,7 @@ import { Documento } from './documento.entity';
     //Servir archivos estáticos en /subidas
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/subidas',
+      serveRoot: '/api/subidas',
     }),
   ],
 
