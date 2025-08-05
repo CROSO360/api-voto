@@ -24,7 +24,7 @@ async function bootstrap() {
 
   app.enableCors(corsOptions);
 
-  // MUY IMPORTANTE: usar el adaptador de WebSocket
+  //Adaptador de WebSocket
   app.useWebSocketAdapter(new IoAdapter(app));
 
   const PORT = process.env.PORT || 3000;

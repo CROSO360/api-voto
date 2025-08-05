@@ -249,7 +249,7 @@ export class SesionService extends BaseService<Sesion> {
 
     const documento = this.documentoRepo.create({
       nombre: nombreArchivo,
-      url: `${process.env.APP_BASE_URL}/subidas/${nombreArchivo}`,
+      url: `${process.env.APP_BASE_URL}/api/subidas/${nombreArchivo}`,
       fecha_subida: new Date(),
       estado: true,
       status: true,
