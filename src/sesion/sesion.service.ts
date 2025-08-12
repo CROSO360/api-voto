@@ -231,7 +231,7 @@ export class SesionService extends BaseService<Sesion> {
       .replace('T', '_');
 
     const nombreArchivo = `reporte_sesion_${sesion.codigo || sesion.id_sesion}_${timestamp}.pdf`;
-    const rutaArchivo = path.join(process.cwd(), 'uploads', nombreArchivo);
+    const rutaArchivo = path.join(process.cwd(), '/uploads', nombreArchivo);
 
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
     const stream = fs.createWriteStream(rutaArchivo);
