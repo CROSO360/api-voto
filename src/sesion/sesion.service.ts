@@ -244,7 +244,7 @@ export class SesionService extends BaseService<Sesion> {
 
     // ===== Guardado en base de datos (misma URL pública que DocumentoService) =====
     const baseUrl = (process.env.APP_BASE_URL || '').replace(/\/+$/, ''); // ej: https://api.../api
-    const urlPublica = `${baseUrl}/api/subidas/${encodeURIComponent(nombreArchivo)}`;
+    const urlPublica = `${baseUrl}/subidas/${encodeURIComponent(nombreArchivo)}`;
 
     const documento = this.documentoRepo.create({
       nombre: nombreArchivo,
