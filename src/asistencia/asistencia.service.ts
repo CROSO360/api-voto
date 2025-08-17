@@ -41,7 +41,9 @@ export class AsistenciaService extends BaseService<Asistencia> {
   // Genera asistencias iniciales para todos los miembros
   // ===================================================
   async generarAsistencias(idSesion: number): Promise<Asistencia[]> {
-    const sesion = await this.sesionRepo.findOne({ where: { id_sesion: idSesion } });
+    const sesion = await this.sesionRepo.findOne({
+      where: { id_sesion: idSesion },
+    });
     if (!sesion) throw new BadRequestException('La sesión no existe.');
 
     const miembros = await this.miembroRepo.find({
@@ -49,7 +51,9 @@ export class AsistenciaService extends BaseService<Asistencia> {
       relations: ['usuario'],
     });
     if (!miembros.length)
-      throw new BadRequestException('No hay miembros registrados para generar asistencias.');
+      throw new BadRequestException(
+        'No hay miembros registrados para generar asistencias.',
+      );
 
     const nuevasAsistencias: Asistencia[] = [];
 
@@ -75,7 +79,34 @@ export class AsistenciaService extends BaseService<Asistencia> {
       }
     }
 
-    return await this.asistenciaRepo.save(nuevasAsistencias);
+    // ⬇️ Cambia SOLO el guardado por insert + orIgnore()
+    if (nuevasAsistencias.length) {
+      await this.asistenciaRepo
+        .createQueryBuilder()
+        .insert()
+        .into(Asistencia)
+        .values(
+          nuevasAsistencias.map((a) => ({
+            // ✅ usar relaciones, no columnas primitivas
+            sesion: { id_sesion: sesion.id_sesion },
+            usuario: { id_usuario: a.usuario.id_usuario },
+
+            // ✅ usar boolean, no 0/1
+            estado: !!a.estado,
+            status: !!a.status,
+
+            // tipo_asistencia: a.tipo_asistencia ?? null, // si aplica y es nullable
+          })),
+        )
+        .orIgnore() // ignora si choca con UNIQUE (sesion, usuario)
+        .execute();
+    }
+
+    return await this.asistenciaRepo.find({
+      where: { sesion: { id_sesion: idSesion } },
+      relations: ['sesion', 'usuario'],
+      order: { id_asistencia: 'ASC' },
+    });
   }
 
   // ===================================================
@@ -86,7 +117,9 @@ export class AsistenciaService extends BaseService<Asistencia> {
     idSesion: number,
     usuariosSeleccionados: number[],
   ): Promise<void> {
-    const sesion = await this.sesionRepo.findOne({ where: { id_sesion: idSesion } });
+    const sesion = await this.sesionRepo.findOne({
+      where: { id_sesion: idSesion },
+    });
     if (!sesion) throw new BadRequestException('La sesión no existe.');
 
     const miembros = await this.miembroRepo.find({
@@ -135,7 +168,9 @@ export class AsistenciaService extends BaseService<Asistencia> {
   // Borra todas las asistencias de una sesión
   // ===================================================
   async eliminarAsistencias(idSesion: number): Promise<void> {
-    const sesion = await this.sesionRepo.findOne({ where: { id_sesion: idSesion } });
+    const sesion = await this.sesionRepo.findOne({
+      where: { id_sesion: idSesion },
+    });
     if (!sesion) throw new BadRequestException('La sesión no existe.');
 
     await this.asistenciaRepo.delete({ sesion: { id_sesion: idSesion } });

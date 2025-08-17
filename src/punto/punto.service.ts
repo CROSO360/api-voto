@@ -146,7 +146,26 @@ export class PuntoService {
       });
     });
 
-    await this.puntoUsuarioRepo.save(puntoUsuarios);
+    if (puntoUsuarios.length) {
+      await this.puntoUsuarioRepo
+        .createQueryBuilder()
+        .insert()
+        .into(PuntoUsuario)
+        .values(
+          puntoUsuarios.map((pu) => ({
+            // ⚠️ Usa relaciones (ManyToOne) en vez de ids planos para que cuadre con tu entidad
+            punto: { id_punto: puntoGuardado.id_punto },
+            usuario: { id_usuario: (pu as any).usuario?.id_usuario },
+
+            // ⚠️ Mantén booleanos (no 0/1) para que no choque con el tipo de la entidad
+            estado: !!pu.estado,
+            es_principal: !!pu.es_principal,
+          })),
+        )
+        .orIgnore() // ← ignora filas que choquen con UNIQUE (id_punto, id_usuario)
+        .execute();
+    }
+
     return puntoGuardado;
   }
 
@@ -698,7 +717,7 @@ export class PuntoService {
         punto.resultado = 'pendiente';
       }
 
-      punto.estado = false; 
+      punto.estado = false;
       await queryRunner.manager.save(punto);
       await queryRunner.commitTransaction();
     } catch (error) {
@@ -849,7 +868,7 @@ export class PuntoService {
     await queryRunner.startTransaction();
 
     try {
-      punto.estado = false; 
+      punto.estado = false;
       await queryRunner.query(`SET @usuario_actual = ?`, [id_usuario]);
       await queryRunner.manager.save(punto.resolucion);
       await queryRunner.manager.save(punto);
@@ -1060,7 +1079,7 @@ export class PuntoService {
     }
 
     // Guardar el punto con sus resultados
-    punto.estado = false; 
+    punto.estado = false;
     await manager.save(punto);
   }
 
