@@ -487,7 +487,12 @@ export class PuntoService {
       });
     });
 
-    await this.puntoUsuarioRepo.save(puntoUsuarios);
+    await this.bulkInsertPuntoUsuariosOrIgnore(
+      puntoGuardado.id_punto,
+      miembros,
+      mapaEsPrincipal,
+      puntoOriginal.es_administrativa,
+    );
     return puntoGuardado;
   }
 
@@ -594,8 +599,48 @@ export class PuntoService {
       });
     });
 
-    await this.puntoUsuarioRepo.save(puntoUsuarios);
+    await this.bulkInsertPuntoUsuariosOrIgnore(
+      puntoGuardado.id_punto,
+      miembros,
+      mapaEsPrincipal,
+      puntoOriginal.es_administrativa,
+    );
     return puntoGuardado;
+  }
+
+  // 🔧 Helper reutilizable
+  private async bulkInsertPuntoUsuariosOrIgnore(
+    puntoId: number,
+    miembros: Miembro[],
+    mapaEsPrincipal: Record<number, boolean>,
+    esAdministrativa: boolean,
+  ) {
+    const values = miembros.map((m) => {
+      const usuario = m.usuario;
+      const grupo = usuario.grupoUsuario?.nombre?.toLowerCase() || '';
+      const esTrabajador = grupo === 'trabajador';
+      const esRector = grupo === 'rector';
+
+      const estado = esRector ? false : !(esAdministrativa && esTrabajador);
+      const es_principal = mapaEsPrincipal[usuario.id_usuario] ?? true;
+
+      return {
+        punto: { id_punto: puntoId },
+        usuario: { id_usuario: usuario.id_usuario },
+        estado,
+        es_principal,
+      };
+    });
+
+    if (!values.length) return;
+
+    await this.puntoUsuarioRepo
+      .createQueryBuilder()
+      .insert()
+      .into(PuntoUsuario)
+      .values(values)
+      .orIgnore() // ⬅️ Ignora (id_punto, id_usuario) repetidos
+      .execute();
   }
 
   // ========================================
