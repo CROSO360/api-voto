@@ -205,6 +205,15 @@ export class SesionService extends BaseService<Sesion> {
           italics: true,
           margin: [0, 0, 0, 20],
         });
+        
+        if(punto.requiere_voto_dirimente){
+          content.push({
+          text: `Voto dirimente del rector`,
+          italics: true,
+          margin: [0, 0, 0, 20],
+        });
+        }
+        
       }
     }
 

@@ -3,6 +3,7 @@
 // ==========================================
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -28,6 +29,7 @@ import { ResultadoManualDto } from 'src/auth/dto/resultado-manual.dto';
 import { Miembro } from 'src/miembro/miembro.entity';
 import { VotoDto } from 'src/auth/dto/voto.dto';
 import { Usuario } from 'src/usuario/usuario.entity';
+import { PuntoUsuarioService } from 'src/punto-usuario/punto-usuario.service';
 
 // ==========================================
 // SERVICIO: PuntoService
@@ -44,6 +46,7 @@ export class PuntoService {
     @InjectRepository(Miembro)
     private readonly miembroRepo: Repository<Miembro>,
     private dataSource: DataSource,
+    private puntoUsuarioService: PuntoUsuarioService,
   ) {}
 
   // ========================================
@@ -165,6 +168,11 @@ export class PuntoService {
         .orIgnore() // ← ignora filas que choquen con UNIQUE (id_punto, id_usuario)
         .execute();
     }
+
+    await this.puntoUsuarioService.syncEstadoByPunto(
+      puntoGuardado.id_punto,
+      idSesion,
+    );
 
     return puntoGuardado;
   }
@@ -493,6 +501,10 @@ export class PuntoService {
       mapaEsPrincipal,
       puntoOriginal.es_administrativa,
     );
+    await this.puntoUsuarioService.syncEstadoByPunto(
+      puntoGuardado.id_punto,
+      sesion.id_sesion
+    );
     return puntoGuardado;
   }
 
@@ -605,6 +617,11 @@ export class PuntoService {
       mapaEsPrincipal,
       puntoOriginal.es_administrativa,
     );
+
+    await this.puntoUsuarioService.syncEstadoByPunto(
+      puntoGuardado.id_punto,
+      sesion.id_sesion,
+    );
     return puntoGuardado;
   }
 
@@ -669,6 +686,8 @@ export class PuntoService {
       });
 
       if (!punto) throw new NotFoundException('Punto no encontrado');
+
+      const dirimentePrevio = !!punto.requiere_voto_dirimente; // <— ESTADO ANTES DEL CÁLCULO
 
       let puntoUsuarios = punto.puntoUsuarios.filter((pu) => pu.estado);
 
@@ -762,6 +781,64 @@ export class PuntoService {
         punto.resultado = 'pendiente';
       }
 
+      // 🔍 Empate ponderado: activar voto dirimente
+      if (p_afavor === p_encontra && p_afavor !== 0) {
+        punto.resultado = 'empate';
+
+        if (!punto.requiere_voto_dirimente) {
+          punto.requiere_voto_dirimente = true;
+
+          const rectorPU = punto.puntoUsuarios.find(
+            (pu) =>
+              pu.usuario.grupoUsuario.nombre.toLowerCase() === 'rector' &&
+              pu.estado === false,
+          );
+
+          if (rectorPU) {
+            rectorPU.estado = true;
+            await queryRunner.manager.save(PuntoUsuario, rectorPU);
+          }
+        }
+      } else if (
+        punto.p_afavor > punto.p_encontra &&
+        punto.p_afavor > punto.p_abstencion
+      ) {
+        punto.resultado = 'aprobada';
+      } else if (
+        punto.p_encontra > punto.p_afavor &&
+        punto.p_encontra > punto.p_abstencion
+      ) {
+        punto.resultado = 'rechazada';
+      } else {
+        punto.resultado = 'pendiente';
+      }
+
+      // ⬇️⬇️ INSERTAR AQUÍ: aplica/valida voto dirimente del Rector
+      // ⬇️ justo ANTES de save(punto), usa el estado PREVIO del flag
+      if (dirimentePrevio) {
+        const rectorPU = punto.puntoUsuarios.find(
+          (pu) => pu.usuario.grupoUsuario?.nombre?.toLowerCase() === 'rector',
+        );
+
+        if (!rectorPU || !rectorPU.opcion) {
+          throw new BadRequestException(
+            'El Rector debe emitir su voto dirimente antes de finalizar el cálculo.',
+          );
+        }
+
+        switch (rectorPU.opcion) {
+          case 'afavor':
+            punto.resultado = 'aprobada';
+            break;
+          case 'encontra':
+            punto.resultado = 'rechazada';
+            break;
+          case 'abstencion':
+            punto.resultado = 'pendiente'; // regla que pediste
+            break;
+        }
+      }
+
       punto.estado = false;
       await queryRunner.manager.save(punto);
       await queryRunner.commitTransaction();
@@ -769,13 +846,20 @@ export class PuntoService {
       await queryRunner.rollbackTransaction();
       console.error('❌ Error al calcular resultados:', error);
 
-      if (error instanceof QueryFailedError) {
-        console.error('Detalles de error SQL:', (error as any).message);
-      }
+      // Si ya es una HttpException (p.ej., BadRequestException), no la sobrescribas
+  if (error instanceof HttpException) {
+    throw error;
+  }
 
-      throw new InternalServerErrorException(
-        'Error al calcular los resultados automáticamente. Revisa los logs del servidor.',
-      );
+  // (Opcional) inspeccionar errores SQL
+  if (error instanceof QueryFailedError) {
+    console.error('Detalles de error SQL:', (error as any).message);
+  }
+
+  // Fallback genérico para errores no controlados
+  throw new InternalServerErrorException(
+    'Error al calcular los resultados automáticamente. Revisa los logs del servidor.',
+  );
     } finally {
       await queryRunner.release();
     }

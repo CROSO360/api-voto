@@ -9,7 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { PuntoUsuario } from './punto-usuario.entity';
 import { BaseService } from 'src/commons/commons.service';
@@ -23,6 +23,7 @@ import {
 } from 'src/auth/dto/votar-grupo.dto';
 import { WebsocketGateway } from 'src/websocket/websocket.gateway';
 import { Usuario } from 'src/usuario/usuario.entity';
+import { Asistencia } from 'src/asistencia/asistencia.entity';
 
 // =======================================================
 // SERVICIO: PuntoUsuarioService
@@ -329,4 +330,184 @@ export class PuntoUsuarioService extends BaseService<PuntoUsuario> {
       .getRepository(PuntoUsuario)
       .save(puntoUsuariosAActualizar);
   }
+
+
+
+
+  async syncEstadoBySesion(
+  idSesion: number,
+  manager?: EntityManager,        // ⬅️ nuevo parámetro opcional
+): Promise<void> {
+  const run = async (em: EntityManager) => {
+    // --- Subqueries reutilizables --- (usa `em` en lugar de `trx`)
+    const sbPuntosSesion = em.getRepository(Punto)
+      .createQueryBuilder('p')
+      .select('p.id_punto')
+      .where('p.sesion = :idSesion', { idSesion });
+
+    const sbMiembros = em.getRepository(Miembro)
+      .createQueryBuilder('m')
+      .select('m.usuario')
+      .where('m.estado = :on', { on: true })
+      .andWhere('m.status = :on', { on: true });
+
+    const sbUsuariosRector = em.getRepository(Usuario)
+      .createQueryBuilder('u')
+      .innerJoin('u.grupoUsuario', 'g')
+      .select('u.id_usuario')
+      .where('LOWER(g.nombre) = :rector', { rector: 'rector' });
+
+    const sbUsuariosTrabajador = em.getRepository(Usuario)
+      .createQueryBuilder('u')
+      .innerJoin('u.grupoUsuario', 'g')
+      .select('u.id_usuario')
+      .where('LOWER(g.nombre) = :trabajador', { trabajador: 'trabajador' });
+
+    const sbUsuariosPresentes = em.getRepository(Asistencia)
+      .createQueryBuilder('a')
+      .select('a.usuario')
+      .where('a.sesion = :idSesion', { idSesion })
+      .andWhere('a.tipo_asistencia = :presente', { presente: 'presente' });
+
+    // 1) Apagar
+    await em.createQueryBuilder()
+      .update(PuntoUsuario)
+      .set({ estado: false })
+      .where(`punto IN (${sbPuntosSesion.getQuery()})`)
+      .andWhere(`usuario IN (${sbMiembros.getQuery()})`)
+      .setParameters({ ...sbPuntosSesion.getParameters(), ...sbMiembros.getParameters() })
+      .execute();
+
+    // 2a) Encender no administrativos
+    const sbPuntosNoAdm = em.getRepository(Punto)
+      .createQueryBuilder('p2')
+      .select('p2.id_punto')
+      .where('p2.sesion = :idSesion', { idSesion })
+      .andWhere('p2.es_administrativa = :off', { off: false });
+
+    await em.createQueryBuilder()
+      .update(PuntoUsuario)
+      .set({ estado: true })
+      .where(`punto IN (${sbPuntosNoAdm.getQuery()})`)
+      .andWhere(`usuario IN (${sbMiembros.getQuery()})`)
+      .andWhere(`usuario IN (${sbUsuariosPresentes.getQuery()})`)
+      .andWhere(`usuario NOT IN (${sbUsuariosRector.getQuery()})`)
+      .setParameters({
+        ...sbPuntosNoAdm.getParameters(),
+        ...sbMiembros.getParameters(),
+        ...sbUsuariosPresentes.getParameters(),
+        ...sbUsuariosRector.getParameters(),
+      })
+      .execute();
+
+    // 2b) Encender administrativos (excepto trabajadores)
+    const sbPuntosAdm = em.getRepository(Punto)
+      .createQueryBuilder('p3')
+      .select('p3.id_punto')
+      .where('p3.sesion = :idSesion', { idSesion })
+      .andWhere('p3.es_administrativa = :on', { on: true });
+
+    await em.createQueryBuilder()
+      .update(PuntoUsuario)
+      .set({ estado: true })
+      .where(`punto IN (${sbPuntosAdm.getQuery()})`)
+      .andWhere(`usuario IN (${sbMiembros.getQuery()})`)
+      .andWhere(`usuario IN (${sbUsuariosPresentes.getQuery()})`)
+      .andWhere(`usuario NOT IN (${sbUsuariosRector.getQuery()})`)
+      .andWhere(`usuario NOT IN (${sbUsuariosTrabajador.getQuery()})`)
+      .setParameters({
+        ...sbPuntosAdm.getParameters(),
+        ...sbMiembros.getParameters(),
+        ...sbUsuariosPresentes.getParameters(),
+        ...sbUsuariosRector.getParameters(),
+        ...sbUsuariosTrabajador.getParameters(),
+      })
+      .execute();
+  };
+
+  // Si me pasan manager, corro ahí (misma tx del caller). Si no, abro una tx propia.
+  if (manager) {
+    await run(manager);
+  } else {
+    await this.dataSource.transaction(run);
+  }
 }
+
+  
+async syncEstadoByPunto(idPunto: number, idSesion: number): Promise<void> {
+    await this.dataSource.transaction(async (trx) => {
+      const sbMiembros = trx
+        .getRepository(Miembro)
+        .createQueryBuilder('m')
+        .select('m.usuario')
+        .where('m.estado = :on', { on: true })
+        .andWhere('m.status = :on', { on: true });
+
+      const sbUsuariosRector = trx
+        .getRepository(Usuario)
+        .createQueryBuilder('u')
+        .innerJoin('u.grupoUsuario', 'g')
+        .select('u.id_usuario')
+        .where('LOWER(g.nombre) = :rector', { rector: 'rector' });
+
+      const sbUsuariosTrabajador = trx
+        .getRepository(Usuario)
+        .createQueryBuilder('u')
+        .innerJoin('u.grupoUsuario', 'g')
+        .select('u.id_usuario')
+        .where('LOWER(g.nombre) = :trabajador', { trabajador: 'trabajador' });
+
+      const sbUsuariosPresentes = trx
+        .getRepository(Asistencia)
+        .createQueryBuilder('a')
+        .select('a.usuario')
+        .where('a.sesion = :idSesion', { idSesion })
+        .andWhere('a.tipo_asistencia = :presente', { presente: 'presente' });
+
+      // ¿El punto es administrativo?
+      const punto = await trx.getRepository(Punto).findOne({
+        where: { id_punto: idPunto },
+        select: { es_administrativa: true },
+      });
+      const esAdm = !!punto?.es_administrativa;
+
+      // 1) Apagar todos los PU del punto para MIEMBROS
+      await trx
+        .createQueryBuilder()
+        .update(PuntoUsuario)
+        .set({ estado: false })
+        .where('punto = :idPunto', { idPunto })
+        .andWhere(`usuario IN (${sbMiembros.getQuery()})`)
+        .setParameters(sbMiembros.getParameters())
+        .execute();
+
+      // 2) Encender según reglas
+      const encender = trx
+        .createQueryBuilder()
+        .update(PuntoUsuario)
+        .set({ estado: true })
+        .where('punto = :idPunto', { idPunto })
+        .andWhere(`usuario IN (${sbMiembros.getQuery()})`)
+        .andWhere(`usuario IN (${sbUsuariosPresentes.getQuery()})`)
+        .andWhere(`usuario NOT IN (${sbUsuariosRector.getQuery()})`);
+
+      if (esAdm) {
+        encender.andWhere(`usuario NOT IN (${sbUsuariosTrabajador.getQuery()})`);
+      }
+
+      await encender
+        .setParameters({
+          ...sbMiembros.getParameters(),
+          ...sbUsuariosPresentes.getParameters(),
+          ...sbUsuariosRector.getParameters(),
+          ...(esAdm ? sbUsuariosTrabajador.getParameters() : {}),
+        })
+        .execute();
+    });
+  }
+
+
+
+}
+
+

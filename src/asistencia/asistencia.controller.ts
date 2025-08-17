@@ -54,4 +54,19 @@ export class AsistenciaController extends BaseController<Asistencia> {
   eliminarAsistencias(@Param('idSesion') idSesion: number) {
     return this.asistenciaService.eliminarAsistencias(+idSesion);
   }
+
+  @Post('guardar/:idSesion')
+  async guardarYSincronizar(
+    @Param('idSesion') idSesion: number,
+    @Body()
+    body: {
+      actualizaciones: { id_asistencia: number; tipo_asistencia: string }[];
+    },
+  ) {
+    await this.asistenciaService.guardarAsistencias(
+      idSesion,
+      body.actualizaciones,
+    );
+    return { ok: true };
+  }
 }

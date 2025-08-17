@@ -4,7 +4,7 @@
 
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 // Servicios y entidades relacionados
 import { BaseService } from 'src/commons/commons.service';
@@ -12,6 +12,7 @@ import { Asistencia } from './asistencia.entity';
 import { Sesion } from 'src/sesion/sesion.entity';
 import { Miembro } from 'src/miembro/miembro.entity';
 import { Usuario } from 'src/usuario/usuario.entity';
+import { PuntoUsuarioService } from 'src/punto-usuario/punto-usuario.service';
 
 // =======================================================
 // SERVICIO: AsistenciaService
@@ -28,6 +29,8 @@ export class AsistenciaService extends BaseService<Asistencia> {
 
     @InjectRepository(Miembro)
     private miembroRepo: Repository<Miembro>,
+    private dataSource: DataSource,
+    private puntoUsuarioService: PuntoUsuarioService,
   ) {
     super();
   }
@@ -175,4 +178,24 @@ export class AsistenciaService extends BaseService<Asistencia> {
 
     await this.asistenciaRepo.delete({ sesion: { id_sesion: idSesion } });
   }
+
+  // asistencia.service.ts
+async guardarAsistencias(
+  idSesion: number,
+  payload: { id_asistencia: number; tipo_asistencia: string }[],
+) {
+  await this.dataSource.transaction(async (manager) => {
+    // ⬇️ Usa el manager de la transacción
+    for (const { id_asistencia, tipo_asistencia } of payload) {
+      await manager.getRepository(Asistencia).update(
+        { id_asistencia },
+        { tipo_asistencia },
+      );
+    }
+
+    // ⬇️ NO cambies el isolation aquí. Reutiliza el manager.
+    await this.puntoUsuarioService.syncEstadoBySesion(idSesion, manager);
+  });
+}
+
 }

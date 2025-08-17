@@ -11,6 +11,8 @@ import { Asistencia } from './asistencia.entity';
 
 import { Sesion } from 'src/sesion/sesion.entity';
 import { Miembro } from 'src/miembro/miembro.entity';
+import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
+import { PuntoUsuarioModule } from 'src/punto-usuario/punto-usuario.module';
 
 // =======================================================
 // MÓDULO: AsistenciaModule
@@ -18,7 +20,8 @@ import { Miembro } from 'src/miembro/miembro.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Asistencia, Sesion, Miembro]), // Repositorios requeridos
+    TypeOrmModule.forFeature([Asistencia, Sesion, Miembro,PuntoUsuario]), // Repositorios requeridos
+    PuntoUsuarioModule
   ],
   providers: [AsistenciaService], // Lógica de negocio
   controllers: [AsistenciaController], // Rutas y endpoints
