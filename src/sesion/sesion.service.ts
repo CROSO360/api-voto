@@ -2,7 +2,12 @@
 // Importaciones
 // ==============================
 
-import { BadRequestException, ConflictException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as PdfPrinter from 'pdfmake';
@@ -57,44 +62,38 @@ export class SesionService extends BaseService<Sesion> {
       where: { id_sesion: idSesion },
       relations: ['puntos', 'puntos.resolucion'],
     });
-
-    if (!sesion) {
-      throw new BadRequestException('Sesión no encontrada');
-    }
-
+    if (!sesion) throw new BadRequestException('Sesión no encontrada');
     if (sesion.fase !== 'finalizada') {
       throw new BadRequestException('La sesión no está finalizada');
     }
 
-    // ========================
-    // Configuración de fuentes PDF
-    // ========================
-
+    // ===== Fuentes PDF =====
     const fonts = {
       Roboto: {
         normal: path.join(__dirname, '..', '..', 'fonts', 'Roboto-Regular.ttf'),
         bold: path.join(__dirname, '..', '..', 'fonts', 'Roboto-Medium.ttf'),
         italics: path.join(__dirname, '..', '..', 'fonts', 'Roboto-Italic.ttf'),
-        bolditalics: path.join(__dirname, '..', '..', 'fonts', 'Roboto-MediumItalic.ttf'),
+        bolditalics: path.join(
+          __dirname,
+          '..',
+          '..',
+          'fonts',
+          'Roboto-MediumItalic.ttf',
+        ),
       },
     };
-
     const printer = new PdfPrinter(fonts);
+
     const content: any[] = [
       { text: `Resultados de la sesión ${sesion.nombre}`, style: 'header' },
     ];
 
-    // ========================
-    // Iteración por puntos
-    // ========================
-
+    // ===== Iteración por puntos (tu lógica actual sin cambios) =====
     for (const punto of sesion.puntos) {
       const resolucion = punto.resolucion;
-
       content.push({ text: `Punto ${punto.nombre}`, style: 'subheader' });
       content.push({ text: punto.detalle, margin: [0, 0, 0, 5] });
 
-      // Solo si la resolución es automática
       if (!resolucion?.voto_manual) {
         const resultados = await this.puntoUsuarioRepo.find({
           where: { punto: { id_punto: punto.id_punto } },
@@ -102,11 +101,9 @@ export class SesionService extends BaseService<Sesion> {
         });
 
         const resumen: Record<string, any> = {};
-
         for (const r of resultados) {
           const grupo = r.usuario.grupoUsuario.nombre;
           const peso = r.usuario.grupoUsuario.peso;
-
           if (!resumen[grupo]) {
             resumen[grupo] = {
               grupo,
@@ -118,7 +115,6 @@ export class SesionService extends BaseService<Sesion> {
               abstencion_peso: 0,
             };
           }
-
           switch (r.opcion) {
             case 'afavor':
               resumen[grupo].afavor++;
@@ -148,7 +144,6 @@ export class SesionService extends BaseService<Sesion> {
         let totalAfavorPeso = 0;
         let totalEncontraPeso = 0;
         let totalAbstencionPeso = 0;
-
         Object.values(resumen).forEach((r: any) => {
           totalAfavorPeso += r.afavor_peso;
           totalEncontraPeso += r.encontra_peso;
@@ -186,7 +181,6 @@ export class SesionService extends BaseService<Sesion> {
         });
       }
 
-      // Detalle de resolución (manual o automática)
       if (resolucion) {
         content.push({
           table: {
@@ -205,21 +199,16 @@ export class SesionService extends BaseService<Sesion> {
           italics: true,
           margin: [0, 0, 0, 20],
         });
-        
-        if(punto.requiere_voto_dirimente){
+
+        if (punto.requiere_voto_dirimente) {
           content.push({
-          text: `Voto dirimente del rector`,
-          italics: true,
-          margin: [0, 0, 0, 20],
-        });
+            text: `Voto dirimente del rector`,
+            italics: true,
+            margin: [0, 0, 0, 20],
+          });
         }
-        
       }
     }
-
-    // ========================
-    // Definición del documento PDF
-    // ========================
 
     const docDefinition = {
       content,
@@ -229,41 +218,41 @@ export class SesionService extends BaseService<Sesion> {
       },
     };
 
-    // ========================
-    // Escritura del archivo
-    // ========================
-
+    // ===== Escritura del archivo (ALINEADO CON DocumentoModule) =====
     const timestamp = new Date()
       .toISOString()
       .replace(/[-:]/g, '')
       .replace(/\..+/, '')
       .replace('T', '_');
-
     const nombreArchivo = `reporte_sesion_${sesion.codigo || sesion.id_sesion}_${timestamp}.pdf`;
-    const rutaArchivo = path.join(process.cwd(), '/uploads', nombreArchivo);
 
-    const pdfDoc = printer.createPdfKitDocument(docDefinition);
-    const stream = fs.createWriteStream(rutaArchivo);
-    pdfDoc.pipe(stream);
-    pdfDoc.end();
+    // DocumentoModule usa rootPath ABSOLUTO '/uploads' y serveRoot '/api/subidas'
+    const uploadsBase = '/uploads'; // igual que en DocumentoModule
+    try {
+      fs.mkdirSync(uploadsBase, { recursive: true });
+    } catch {}
+    const rutaArchivo = path.join(uploadsBase, nombreArchivo); // no usar process.cwd() con '/uploads'
 
     await new Promise<void>((resolve, reject) => {
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      const stream = fs.createWriteStream(rutaArchivo);
+      pdfDoc.pipe(stream);
+      pdfDoc.end();
       stream.on('finish', resolve);
       stream.on('error', reject);
     });
 
-    // ========================
-    // Guardado en base de datos
-    // ========================
+    // ===== Guardado en base de datos (misma URL pública que DocumentoService) =====
+    const baseUrl = (process.env.APP_BASE_URL || '').replace(/\/+$/, ''); // ej: https://api.../api
+    const urlPublica = `${baseUrl}/api/subidas/${encodeURIComponent(nombreArchivo)}`;
 
     const documento = this.documentoRepo.create({
       nombre: nombreArchivo,
-      url: `${process.env.APP_BASE_URL}/subidas/${nombreArchivo}`,
+      url: urlPublica,
       fecha_subida: new Date(),
       estado: true,
       status: true,
     });
-
     const documentoGuardado = await this.documentoRepo.save(documento);
 
     const sesionDocumento = this.sesionDocumentoRepo.create({
@@ -272,13 +261,9 @@ export class SesionService extends BaseService<Sesion> {
       estado: true,
       status: true,
     });
-
     await this.sesionDocumentoRepo.save(sesionDocumento);
 
-    // ========================
-    // Devolver buffer del PDF
-    // ========================
-
+    // ===== Devolver buffer =====
     const buffer = fs.readFileSync(rutaArchivo);
     return buffer;
   }
@@ -294,7 +279,9 @@ export class SesionService extends BaseService<Sesion> {
         if (error.code === 'ER_DUP_ENTRY') {
           continue;
         }
-        throw new InternalServerErrorException('Error al verificar el código de sesión');
+        throw new InternalServerErrorException(
+          'Error al verificar el código de sesión',
+        );
       }
     }
 

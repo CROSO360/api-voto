@@ -1269,4 +1269,21 @@ export class PuntoService {
 
     return [...resultados, { resultado: totales }];
   }
+
+  /**
+   * Devuelve true si el punto existe y está habilitado (estado = true).
+   * No lanza excepción si no existe: simplemente retorna false,
+   * para que el cliente pueda decidir no enviar el voto.
+   */
+  async estaHabilitado(idPunto: number): Promise<boolean> {
+    const row = await this.puntoRepo
+      .createQueryBuilder('p')
+      .select(['p.id_punto', 'p.estado', 'p.status'])
+      .where('p.id_punto = :idPunto', { idPunto })
+      .getOne();
+
+    // Si no existe o está desactivado lógicamente, consideramos no habilitado
+    if (!row) return false;
+    return !!row.estado; // solo validas "estado"; si quieres, puedes añadir && !!row.status
+  }
 }

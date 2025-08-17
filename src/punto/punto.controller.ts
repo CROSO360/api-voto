@@ -173,4 +173,13 @@ export class PuntoController {
   ): Promise<void> {
     await this.puntoService.calcularResultadosHibrido(idPunto, votos);
   }
+
+@Get('habilitado/:idPunto')
+  async puntoHabilitado(
+    @Param('idPunto', ParseIntPipe) idPunto: number,
+  ) {
+    const habilitado = await this.puntoService.estaHabilitado(idPunto);
+    return { id_punto: idPunto, habilitado };
+  }
+  
 }
