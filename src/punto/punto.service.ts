@@ -30,6 +30,7 @@ import { Miembro } from 'src/miembro/miembro.entity';
 import { VotoDto } from 'src/auth/dto/voto.dto';
 import { Usuario } from 'src/usuario/usuario.entity';
 import { PuntoUsuarioService } from 'src/punto-usuario/punto-usuario.service';
+import { Auditoria } from 'src/auditoria/auditoria.entity';
 
 // ==========================================
 // SERVICIO: PuntoService
@@ -47,6 +48,7 @@ export class PuntoService {
     private readonly miembroRepo: Repository<Miembro>,
     private dataSource: DataSource,
     private puntoUsuarioService: PuntoUsuarioService,
+    
   ) {}
 
   // ========================================
@@ -242,41 +244,66 @@ export class PuntoService {
   // ELIMINACIÓN DE PUNTOS
   // ========================================
   async eliminarPunto(idPunto: number): Promise<void> {
-    const punto = await this.puntoRepo.findOne({
+  const qr = this.dataSource.createQueryRunner();
+  await qr.connect();
+  await qr.startTransaction();
+
+  try {
+    // 1) Cargar el punto con lo que necesitamos (lock opcional si quieres máxima seguridad)
+    const punto = await qr.manager.findOne(Punto, {
       where: { id_punto: idPunto },
-      relations: ['sesion'],
+      relations: ['sesion', 'resolucion', 'resolucion.auditorias'],
+      // lock: { mode: 'pessimistic_write' },
     });
 
     if (!punto) throw new BadRequestException('El punto no existe.');
-    if (punto.status !== true)
+    if (punto.sesion.fase !== 'pendiente') {
       throw new BadRequestException(
-        'No se puede eliminar un punto que ya ha sido tratado.',
+        `No se puede eliminar un punto si la sesión está ${punto.sesion.fase}.`,
       );
+    }
 
     const idSesion = punto.sesion.id_sesion;
+    const ordenPunto = punto.orden;
 
-    // 🛑 Eliminar PuntoUsuario[]
-    await this.puntoUsuarioRepo
-      .createQueryBuilder()
-      .delete()
-      .from(PuntoUsuario)
-      .where('id_punto = :idPunto', { idPunto })
-      .execute();
+    // 2) Si hay resolución, eliminar primero sus auditorías (si existen) y luego la resolución
+    if (punto.resolucion) {
+      // Auditoría usa FK id_punto hacia Resolucion
+      await qr.manager
+        .createQueryBuilder()
+        .delete()
+        .from(Auditoria)
+        .where('id_punto = :idPunto', { idPunto })
+        .execute();
 
-    // 🔴 Eliminar el punto
-    await this.puntoRepo.delete(idPunto);
+      await qr.manager.delete(Resolucion, { id_punto: idPunto });
+      // si no quieres borrar la resolución cuando existan auditorías (política estricta),
+      // en lugar de borrarlas arriba, lanza error si había alguna.
+      // if (punto.resolucion.auditorias?.length) throw new BadRequestException('No se puede eliminar una resolución con auditorías.');
+    }
 
-    // 🔁 Reordenar puntos restantes
-    await this.puntoRepo
+    // 3) Eliminar el punto (esto cascada los PuntoUsuario, etc., según tu FK ON DELETE CASCADE)
+    await qr.manager.delete(Punto, { id_punto: idPunto });
+
+    // 4) Reordenar los puntos restantes de la sesión
+    await qr.manager
       .createQueryBuilder()
       .update(Punto)
       .set({ orden: () => 'orden - 1' })
       .where('id_sesion = :idSesion AND orden > :orden', {
         idSesion,
-        orden: punto.orden,
+        orden: ordenPunto,
       })
       .execute();
+
+    await qr.commitTransaction();
+  } catch (err) {
+    await qr.rollbackTransaction();
+    throw err;
+  } finally {
+    await qr.release();
   }
+}
 
   /*async eliminarPunto(idPunto: number): Promise<void> {
     const punto = await this.puntoRepo.findOne({
