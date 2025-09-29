@@ -31,6 +31,7 @@ import { VotoDto } from 'src/auth/dto/voto.dto';
 import { Usuario } from 'src/usuario/usuario.entity';
 import { PuntoUsuarioService } from 'src/punto-usuario/punto-usuario.service';
 import { Auditoria } from 'src/auditoria/auditoria.entity';
+import { Asistencia } from 'src/asistencia/asistencia.entity';
 
 // ==========================================
 // SERVICIO: PuntoService
@@ -48,7 +49,8 @@ export class PuntoService {
     private readonly miembroRepo: Repository<Miembro>,
     private dataSource: DataSource,
     private puntoUsuarioService: PuntoUsuarioService,
-    
+    @InjectRepository(Asistencia)
+    private asistenciaRepo: Repository<Asistencia>,
   ) {}
 
   // ========================================
@@ -1313,4 +1315,147 @@ export class PuntoService {
     if (!row) return false;
     return !!row.estado; // solo validas "estado"; si quieres, puedes añadir && !!row.status
   }
+
+  
+
+async getResumenBase(idPunto: number) {
+  const punto = await this.puntoRepo.findOne({
+    where: { id_punto: idPunto },
+    relations: ['sesion'],
+  });
+  if (!punto) throw new NotFoundException('Punto no encontrado');
+
+  const esAdmin = !!punto.es_administrativa;
+  const idSesion = punto.sesion.id_sesion;
+
+  // Censo (Miembro)
+  const miembros = await this.miembroRepo.find({
+    where: { estado: true, status: true },
+    relations: ['usuario', 'usuario.grupoUsuario'],
+  });
+  const elegibleMiembro = (m:any) => !(esAdmin && (m.usuario?.grupoUsuario?.nombre||'').toLowerCase()==='trabajador');
+  const miembrosElig = miembros.filter(elegibleMiembro);
+  const miembrosNominal = miembrosElig.length;
+  const censoPond = +miembrosElig.reduce((a,m)=>a+(m.usuario?.grupoUsuario?.peso||0),0).toFixed(2);
+
+  // Presentes (Asistencia)
+  const asist = await this.asistenciaRepo.find({
+    where: { sesion: { id_sesion: idSesion }, estado: true, status: true },
+    relations: ['usuario','usuario.grupoUsuario'],
+  });
+  const elegiblePresente = (a:any)=>{
+    const t=(a.tipo_asistencia||'').toLowerCase();
+    const g=a.usuario?.grupoUsuario?.nombre||'';
+    const okT=(t==='presente');
+    return okT && !(esAdmin && g.toLowerCase()==='trabajador');
+  };
+  const presentesNominal = asist.filter(elegiblePresente).length;
+
+  // Mínimos (igual al Excel, con 2 decimales)
+  const to2 = (n:number)=>+n.toFixed(2);
+  return {
+    punto: { id: punto.id_punto, esAdministrativa: esAdmin, id_sesion: idSesion },
+    resumen_excel: {
+      bases: {
+        presentes_nominal: presentesNominal,
+        miembros_nominal: miembrosNominal,
+        censo_ponderado: to2(censoPond),
+      },
+      minimos: {
+        mitad_presentes_nominal: to2(presentesNominal/2),
+        mitad_miembros_ponderado: to2(censoPond/2),
+        dos_tercios_ponderado: to2((2*censoPond)/3),
+        dos_tercios_miembros_nominal: to2((2*miembrosNominal)/3),
+        mayoria_simple: to2(presentesNominal/2),
+      }
+    }
+  };
+}
+
+async getResumenPonderado(idPunto: number) {
+  const punto = await this.puntoRepo.findOne({
+    where: { id_punto: idPunto },
+    relations: ['sesion'],
+  });
+  if (!punto) throw new NotFoundException('Punto no encontrado');
+  const esAdmin = !!punto.es_administrativa;
+
+  // helpers numéricos robustos
+  const num = (v: any) => {
+    if (v === null || v === undefined) return 0;
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const to2 = (n: number) => Math.round(n * 100) / 100;
+
+  // 1) Resultados ya guardados (forzar a número)
+  const nA = num(punto.n_afavor);
+  const nC = num(punto.n_encontra);
+  const nAb = num(punto.n_abstencion);
+
+  const pA = to2(num(punto.p_afavor));
+  const pC = to2(num(punto.p_encontra));
+  const pAb = to2(num(punto.p_abstencion));
+
+  const presNom = nA + nC + nAb;
+  const presPond = to2(pA + pC + pAb);
+
+  // 2) Censo y presentes (para mínimos y ausentes)
+  const miembros = await this.miembroRepo.find({
+    where: { estado: true, status: true },
+    relations: ['usuario', 'usuario.grupoUsuario'],
+  });
+  const miembrosElig = miembros.filter((m: any) => {
+    const g = (m.usuario?.grupoUsuario?.nombre || '').toLowerCase();
+    return !(esAdmin && g === 'trabajador');
+  });
+
+  const miembrosNominal = miembrosElig.length;
+  const censoPond = to2(
+    miembrosElig.reduce((a: number, m: any) => a + num(m.usuario?.grupoUsuario?.peso), 0)
+  );
+
+  const minNom = to2(presNom / 2);
+  const minPond = to2(censoPond / 2);
+
+  // 3) Estados
+  const estadoPond =
+    pA >= minPond && pA > pC ? 'APROBADO' :
+    pC >= minPond && pC > pA ? 'RECHAZADO' :
+    pA === pC && pA >= minPond ? 'SIN_MAYORIA' : 'SIN_MAYORIA';
+
+  const estadoNom =
+    nA >= minNom && nA > nC ? 'APROBADO' :
+    nC >= minNom && nC > nA ? 'RECHAZADO' :
+    nA === nC && nA >= minNom ? 'SIN_MAYORIA' : 'SIN_MAYORIA';
+
+  const requiereDirimente = (pA === pC && pA >= minPond) || (nA === nC && nA >= minNom);
+
+  return {
+    punto: { id: punto.id_punto, esAdministrativa: esAdmin },
+    resultados: {
+      nominal:   { a_favor: nA, en_contra: nC, abstencion: nAb, presentes: presNom },
+      ponderado: { a_favor: pA, en_contra: pC, abstencion: pAb, presentes: presPond }
+    },
+    minimos: { nominal: minNom, ponderado: minPond },
+    estados: {
+      ponderado: estadoPond,
+      nominal: estadoNom,
+      requiere_voto_dirimente: requiereDirimente,
+      motivo: (estadoPond === 'APROBADO' || estadoNom === 'APROBADO') ? 'a_favor >= mínimo' : 'sin umbral suficiente'
+    },
+    votos_resumen: {
+      a_favor: nA,
+      en_contra: nC,
+      abstencion: nAb,
+      ausentes: Math.max(0, miembrosNominal - presNom),
+      total: miembrosNominal
+    }
+  };
+}
+
+
+
+
+
 }

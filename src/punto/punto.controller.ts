@@ -181,5 +181,16 @@ export class PuntoController {
     const habilitado = await this.puntoService.estaHabilitado(idPunto);
     return { id_punto: idPunto, habilitado };
   }
+
+  @Get('resumen-base/:id')
+  async getResumenExcel(@Param('id') id: number) {
+    return this.puntoService.getResumenBase(+id); 
+  }
+
+  @Get('resumen-ponderado/:id')
+  async getResumenPonderado(@Param('id') id: number) { 
+    return this.puntoService.getResumenPonderado(+id); 
+  }
+
   
 }

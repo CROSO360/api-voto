@@ -12,6 +12,7 @@ import { PuntoController } from './punto.controller';
 import { SesionModule } from 'src/sesion/sesion.module';
 import { ResolucionModule } from 'src/resolucion/resolucion.module';
 import { PuntoUsuarioModule } from 'src/punto-usuario/punto-usuario.module';
+import { AsistenciaModule } from 'src/asistencia/asistencia.module';
 
 // ==============================
 // MÓDULO: PuntoModule
@@ -26,6 +27,7 @@ import { PuntoUsuarioModule } from 'src/punto-usuario/punto-usuario.module';
     SesionModule,
     ResolucionModule,
     PuntoUsuarioModule,
+    AsistenciaModule
   ],
   providers: [
     // Servicio que contiene la lógica de negocio del módulo

@@ -25,5 +25,6 @@ import { PuntoUsuarioModule } from 'src/punto-usuario/punto-usuario.module';
   ],
   providers: [AsistenciaService], // Lógica de negocio
   controllers: [AsistenciaController], // Rutas y endpoints
+  exports: [AsistenciaService, TypeOrmModule.forFeature([Asistencia])], // Exportación del servicio y del repositorio TypeORM
 })
 export class AsistenciaModule {}
