@@ -4,7 +4,7 @@
 
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, IsNull } from 'typeorm';
 
 // Servicios y entidades relacionados
 import { BaseService } from 'src/commons/commons.service';
@@ -13,6 +13,8 @@ import { Sesion } from 'src/sesion/sesion.entity';
 import { Miembro } from 'src/miembro/miembro.entity';
 import { Usuario } from 'src/usuario/usuario.entity';
 import { PuntoUsuarioService } from 'src/punto-usuario/punto-usuario.service';
+import { Punto } from 'src/punto/punto.entity';
+import { Resultado } from 'src/resultado/resultado.entity';
 
 // =======================================================
 // SERVICIO: AsistenciaService
@@ -180,22 +182,65 @@ export class AsistenciaService extends BaseService<Asistencia> {
   }
 
   // asistencia.service.ts
-async guardarAsistencias(
-  idSesion: number,
-  payload: { id_asistencia: number; tipo_asistencia: string }[],
-) {
-  await this.dataSource.transaction(async (manager) => {
-    // ⬇️ Usa el manager de la transacción
-    for (const { id_asistencia, tipo_asistencia } of payload) {
-      await manager.getRepository(Asistencia).update(
-        { id_asistencia },
-        { tipo_asistencia },
-      );
-    }
+  async guardarAsistencias(
+    idSesion: number,
+    payload: { id_asistencia: number; tipo_asistencia: string }[],
+  ) {
+    await this.dataSource.transaction(async (manager) => {
+      const asistenciaRepo = manager.getRepository(Asistencia);
 
-    // ⬇️ NO cambies el isolation aquí. Reutiliza el manager.
-    await this.puntoUsuarioService.syncEstadoBySesion(idSesion, manager);
-  });
-}
+      for (const { id_asistencia, tipo_asistencia } of payload) {
+        await asistenciaRepo.update({ id_asistencia }, { tipo_asistencia });
+      }
 
+      await this.puntoUsuarioService.syncEstadoBySesion(idSesion, manager);
+
+      const puntosPendientes = await manager.getRepository(Punto).find({
+        where: {
+          sesion: { id_sesion: idSesion },
+          resultado: IsNull(),
+        },
+      });
+
+      if (!puntosPendientes.length) {
+        return;
+      }
+
+      const asistencias = await asistenciaRepo.find({
+        where: {
+          sesion: { id_sesion: idSesion },
+          estado: true,
+          status: true,
+        },
+        relations: ['usuario', 'usuario.grupoUsuario'],
+      });
+
+      const contarPresentes = (excluirTrabajador: boolean) =>
+        asistencias.filter((asistencia) => {
+          const tipo = (asistencia.tipo_asistencia || '').toLowerCase();
+          if (tipo !== 'presente') return false;
+          if (!excluirTrabajador) return true;
+          const grupo = (asistencia.usuario?.grupoUsuario?.nombre || '').toLowerCase();
+          return grupo !== 'trabajador';
+        }).length;
+
+      const resultadoRepo = manager.getRepository(Resultado);
+      const to2 = (n: number) => Math.round(n * 100) / 100;
+
+      for (const punto of puntosPendientes) {
+        const presentes = contarPresentes(!!punto.es_administrativa);
+
+        let resultado = await resultadoRepo.findOne({
+          where: { id_punto: punto.id_punto },
+        });
+
+        if (!resultado) {
+          resultado = resultadoRepo.create({ id_punto: punto.id_punto });
+        }
+
+        resultado.n_mitad_miembros_presente = to2(Math.ceil(presentes / 2));
+        await resultadoRepo.save(resultado);
+      }
+    });
+  }
 }

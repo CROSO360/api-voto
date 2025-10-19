@@ -30,6 +30,7 @@ import { AsistenciaModule } from './asistencia/asistencia.module';
 import { DocumentoModule } from './documento/documento.module';
 import { SesionDocumentoModule } from './sesion-documento/sesion-documento.module';
 import { PuntoDocumentoModule } from './punto-documento/punto-documento.module';
+import { ResultadoModule } from './resultado/resultado.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { GrupoModule } from './grupo/grupo.module';
 import { PuntoGrupoModule } from './punto-grupo/punto-grupo.module';
@@ -65,6 +66,7 @@ import { PuntoGrupoModule } from './punto-grupo/punto-grupo.module';
     DocumentoModule,
     SesionDocumentoModule,
     PuntoDocumentoModule,
+    ResultadoModule,
     MiembroModule,
     FacultadModule,
     AuditoriaModule,

@@ -16,6 +16,7 @@ import { Resolucion } from 'src/resolucion/resolucion.entity';
 import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
 import { PuntoDocumento } from 'src/punto-documento/punto-documento.entity';
 import { PuntoGrupo } from 'src/punto-grupo/punto-grupo.entity';
+import { Resultado } from 'src/resultado/resultado.entity';
 
 // ==========================================
 // ENTIDAD: Punto
@@ -69,6 +70,9 @@ export class Punto {
   @Column()
   resultado: string;
 
+  @Column({ nullable: true })
+  calculo_resultado: string;
+
   @Column()
   tipo: string;
 
@@ -99,6 +103,9 @@ export class Punto {
 
   @OneToOne(() => Resolucion, resolucion => resolucion.punto)
   resolucion: Resolucion;
+
+  @OneToOne(() => Resultado, resultado => resultado.punto)
+  resultadoDetalle: Resultado;
 
   @OneToOne(() => PuntoGrupo, puntoGrupo => puntoGrupo.punto)
   puntoGrupos: PuntoGrupo;

@@ -91,10 +91,18 @@ export class SesionService extends BaseService<Sesion> {
     // ===== Iteración por puntos (tu lógica actual sin cambios) =====
     for (const punto of sesion.puntos) {
       const resolucion = punto.resolucion;
+      const tipoResultado = (resolucion?.fuente_resultado).toLowerCase();
+      const esManual = tipoResultado === 'manual';
+      const esHibrido = tipoResultado === 'hibrido';
+      const etiquetaTipo = esManual
+        ? 'Manual (Registrada por secretaria)'
+        : esHibrido
+        ? 'Híbrida (Votos manuales y cálculo automático)'
+        : 'Automática (Calculada por el sistema)';
       content.push({ text: `Punto ${punto.nombre}`, style: 'subheader' });
       content.push({ text: punto.detalle, margin: [0, 0, 0, 5] });
 
-      if (!resolucion?.voto_manual) {
+      if (!esManual) {
         const resultados = await this.puntoUsuarioRepo.find({
           where: { punto: { id_punto: punto.id_punto } },
           relations: ['usuario', 'usuario.grupoUsuario'],
@@ -195,7 +203,7 @@ export class SesionService extends BaseService<Sesion> {
         });
 
         content.push({
-          text: `Tipo de resolución: ${resolucion.voto_manual ? 'Manual (registrada por Secretaría)' : 'Automática (calculada por el sistema)'}`,
+          text: `Tipo de resolución: ${etiquetaTipo}`,
           italics: true,
           margin: [0, 0, 0, 20],
         });

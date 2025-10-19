@@ -41,8 +41,8 @@ export class Auditoria {
   @Column()
   descripcion_anterior: string;
 
-  @Column()
-  voto_manual_anterior: boolean;
+  @Column({ nullable: true })
+  fuente_resultado_anterior: string;
 
   // Valores actuales
   @Column()
@@ -54,6 +54,6 @@ export class Auditoria {
   @Column()
   descripcion_actual: string;
 
-  @Column()
-  voto_manual_actual: boolean;
+  @Column({ nullable: true })
+  fuente_resultado_actual: string;
 }

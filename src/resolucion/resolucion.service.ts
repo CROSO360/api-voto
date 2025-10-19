@@ -28,9 +28,9 @@ export class ResolucionService extends BaseService<Resolucion> {
     return this.resolucionRepo;
   }
 
-  // ✅ Actualiza nombre, descripción, fecha y voto_manual (opcional)
+  // ✅ Actualiza nombre, descripción, fecha y fuente_resultado (opcional)
   async actualizarResolucion(dto: UpdateResolucionDto): Promise<void> {
-    const { id_punto, id_usuario, nombre, descripcion, voto_manual } = dto;
+    const { id_punto, id_usuario, nombre, descripcion, fuente_resultado } = dto;
     const fecha = new Date();
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -43,8 +43,8 @@ export class ResolucionService extends BaseService<Resolucion> {
 
       // 2. Armar el objeto de actualización
       const updateData: Partial<Resolucion> = { nombre, descripcion, fecha };
-      if (voto_manual !== undefined) {
-        updateData.voto_manual = voto_manual;
+      if (fuente_resultado !== undefined) {
+        updateData.fuente_resultado = fuente_resultado;
       }
 
       // 3. Ejecutar el update
@@ -60,3 +60,4 @@ export class ResolucionService extends BaseService<Resolucion> {
     }
   }
 }
+

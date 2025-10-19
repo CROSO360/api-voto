@@ -13,6 +13,7 @@ import { SesionModule } from 'src/sesion/sesion.module';
 import { ResolucionModule } from 'src/resolucion/resolucion.module';
 import { PuntoUsuarioModule } from 'src/punto-usuario/punto-usuario.module';
 import { AsistenciaModule } from 'src/asistencia/asistencia.module';
+import { ResultadoModule } from 'src/resultado/resultado.module';
 
 // ==============================
 // MÓDULO: PuntoModule
@@ -27,7 +28,8 @@ import { AsistenciaModule } from 'src/asistencia/asistencia.module';
     SesionModule,
     ResolucionModule,
     PuntoUsuarioModule,
-    AsistenciaModule
+    AsistenciaModule,
+    ResultadoModule
   ],
   providers: [
     // Servicio que contiene la lógica de negocio del módulo

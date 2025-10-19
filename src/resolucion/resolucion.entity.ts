@@ -30,8 +30,8 @@ export class Resolucion {
   @Column()
   fecha: Date;
 
-  @Column()
-  voto_manual: boolean;
+  @Column({ nullable: true })
+  fuente_resultado: string;
 
   @Column()
   estado: boolean;

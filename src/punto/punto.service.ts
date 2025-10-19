@@ -32,6 +32,10 @@ import { Usuario } from 'src/usuario/usuario.entity';
 import { PuntoUsuarioService } from 'src/punto-usuario/punto-usuario.service';
 import { Auditoria } from 'src/auditoria/auditoria.entity';
 import { Asistencia } from 'src/asistencia/asistencia.entity';
+import { Resultado } from 'src/resultado/resultado.entity';
+
+type EstadoInterno = 'APROBADO' | 'RECHAZADO' | 'SIN_MAYORIA';
+type EstadoFinal = 'aprobada' | 'rechazada' | 'pendiente' | 'empate';
 
 // ==========================================
 // SERVICIO: PuntoService
@@ -51,6 +55,8 @@ export class PuntoService {
     private puntoUsuarioService: PuntoUsuarioService,
     @InjectRepository(Asistencia)
     private asistenciaRepo: Repository<Asistencia>,
+    @InjectRepository(Resultado)
+    private readonly resultadoRepo: Repository<Resultado>,
   ) {}
 
   // ========================================
@@ -96,7 +102,13 @@ export class PuntoService {
   // ========================================
 
   async crearPunto(createPuntoDto: CreatePuntoDto): Promise<Punto> {
-    const { idSesion, nombre, detalle, es_administrativa } = createPuntoDto;
+    const {
+      idSesion,
+      nombre,
+      detalle,
+      es_administrativa,
+      calculo_resultado,
+    } = createPuntoDto;
 
     // 🟡 Verificar existencia de la sesión
     const sesion = await this.sesionRepo.findOne({
@@ -121,6 +133,7 @@ export class PuntoService {
       detalle: detalle || '',
       orden: nuevoOrden,
       es_administrativa: es_administrativa || false,
+      calculo_resultado: calculo_resultado || 'mayoria_simple',
     });
     const puntoGuardado = await this.puntoRepo.save(nuevoPunto);
 
@@ -475,6 +488,7 @@ export class PuntoService {
       es_administrativa: puntoOriginal.es_administrativa,
       tipo: 'reconsideracion',
       puntoReconsiderado: puntoOriginal,
+      calculo_resultado: puntoOriginal.calculo_resultado || 'mayoria_simple',
       estado: true,
       status: true,
       resultado: null,
@@ -591,6 +605,7 @@ export class PuntoService {
       es_administrativa: puntoOriginal.es_administrativa,
       tipo: 'repetido',
       puntoReconsiderado: puntoOriginal,
+      calculo_resultado: puntoOriginal.calculo_resultado || 'mayoria_simple',
       estado: true,
       status: true,
       resultado: null,
@@ -690,8 +705,9 @@ export class PuntoService {
   }
 
   // ========================================
-  // CÁLCULO AUTOMÁTICO DE RESULTADOS
+  // CÁcalculo AUTOMÁTICO DE RESULTADOS
   // ========================================
+
 
   async calcularResultados(
     id_punto: number,
@@ -702,394 +718,126 @@ export class PuntoService {
     await queryRunner.startTransaction();
 
     try {
-      await queryRunner.query(`SET @usuario_actual = ${id_usuario}`);
+      await this._calcularResultadosInterno(id_punto, id_usuario, queryRunner.manager, {
+        fuenteResultado: 'automatico',
+      });
 
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      if (error instanceof QueryFailedError) {
+        console.error('Detalles de error SQL:', (error as any).message);
+      }
+
+      throw new InternalServerErrorException(
+        'Error al calcular los resultados automaticamente. Revisa los logs del servidor.',
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+
+
+  async calcularResultadosManual(dto: ResultadoManualDto): Promise<void> {
+    const { id_punto, id_usuario, resultado, fuente_resultado } = dto;
+    const fuentesPermitidas: Array<'automatico' | 'manual' | 'hibrido'> = [
+      'automatico',
+      'manual',
+      'hibrido',
+    ];
+    const fuente = fuentesPermitidas.includes(fuente_resultado as any)
+      ? (fuente_resultado as 'automatico' | 'manual' | 'hibrido')
+      : 'manual';
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await this._calcularResultadosInterno(id_punto, id_usuario, queryRunner.manager, {
+        fuenteResultado: fuente,
+        overrideResultado: resultado,
+      });
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      if (error instanceof QueryFailedError) {
+        console.error('Detalles de error SQL:', (error as any).message);
+      }
+
+      throw new InternalServerErrorException(
+        'No se pudo guardar el resultado manual. Revisa los logs del servidor.',
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+
+
+  async calcularResultadosHibrido(
+    idPunto: number,
+    votos: VotoDto[],
+  ): Promise<void> {
+    if (!votos || votos.length === 0) {
+      throw new BadRequestException('No se recibieron votos para procesar.');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
       const punto = await queryRunner.manager.findOne(Punto, {
-        where: { id_punto },
+        where: { id_punto: idPunto },
         relations: [
-          'resolucion',
           'puntoUsuarios',
           'puntoUsuarios.usuario',
           'puntoUsuarios.usuario.grupoUsuario',
         ],
       });
 
-      if (!punto) throw new NotFoundException('Punto no encontrado');
-
-      const dirimentePrevio = !!punto.requiere_voto_dirimente; // <— ESTADO ANTES DEL CÁLCULO
-
-      let puntoUsuarios = punto.puntoUsuarios.filter((pu) => pu.estado);
-
-      if (punto.es_administrativa) {
-        puntoUsuarios = puntoUsuarios.filter(
-          (pu) => pu.usuario.grupoUsuario.nombre.toLowerCase() !== 'trabajador',
-        );
-      }
-
-      let n_afavor = 0,
-        n_encontra = 0,
-        n_abstencion = 0;
-      let p_afavor = 0,
-        p_encontra = 0,
-        p_abstencion = 0;
-      let totalPeso = 0;
-
-      for (const pu of puntoUsuarios) {
-        const peso = pu.usuario.grupoUsuario.peso || 0;
-        if (!pu.opcion || peso === 0) continue;
-
-        totalPeso += peso;
-
-        switch (pu.opcion) {
-          case 'afavor':
-            n_afavor++;
-            p_afavor += peso;
-            break;
-          case 'encontra':
-            n_encontra++;
-            p_encontra += peso;
-            break;
-          case 'abstencion':
-            n_abstencion++;
-            p_abstencion += peso;
-            break;
-        }
-      }
-
-      const normalizar = (valor: number) =>
-        totalPeso > 0 ? parseFloat(((valor / totalPeso) * 100).toFixed(2)) : 0;
-
-      punto.n_afavor = n_afavor;
-      punto.n_encontra = n_encontra;
-      punto.n_abstencion = n_abstencion;
-
-      punto.p_afavor = normalizar(p_afavor);
-      punto.p_encontra = normalizar(p_encontra);
-      punto.p_abstencion = normalizar(p_abstencion);
-
-      if (punto.resolucion) {
-        await queryRunner.manager.update(
-          'resolucion',
-          punto.resolucion.id_punto,
-          {
-            voto_manual: false,
-          },
-        );
-      }
-
-      // 🔍 Empate ponderado: activar voto dirimente
-      if (p_afavor === p_encontra && p_afavor !== 0) {
-        punto.resultado = 'empate';
-
-        // Solo marcar si aún no está marcado
-        if (!punto.requiere_voto_dirimente) {
-          punto.requiere_voto_dirimente = true;
-
-          const rectorPU = punto.puntoUsuarios.find(
-            (pu) =>
-              pu.usuario.grupoUsuario.nombre.toLowerCase() === 'rector' &&
-              pu.estado === false,
-          );
-
-          if (rectorPU) {
-            rectorPU.estado = true;
-            await queryRunner.manager.save(PuntoUsuario, rectorPU);
-          }
-        }
-      } else if (
-        punto.p_afavor > punto.p_encontra &&
-        punto.p_afavor > punto.p_abstencion
-      ) {
-        punto.resultado = 'aprobada';
-      } else if (
-        punto.p_encontra > punto.p_afavor &&
-        punto.p_encontra > punto.p_abstencion
-      ) {
-        punto.resultado = 'rechazada';
-      } else {
-        punto.resultado = 'pendiente';
-      }
-
-      // 🔍 Empate ponderado: activar voto dirimente
-      if (p_afavor === p_encontra && p_afavor !== 0) {
-        punto.resultado = 'empate';
-
-        if (!punto.requiere_voto_dirimente) {
-          punto.requiere_voto_dirimente = true;
-
-          const rectorPU = punto.puntoUsuarios.find(
-            (pu) =>
-              pu.usuario.grupoUsuario.nombre.toLowerCase() === 'rector' &&
-              pu.estado === false,
-          );
-
-          if (rectorPU) {
-            rectorPU.estado = true;
-            await queryRunner.manager.save(PuntoUsuario, rectorPU);
-          }
-        }
-      } else if (
-        punto.p_afavor > punto.p_encontra &&
-        punto.p_afavor > punto.p_abstencion
-      ) {
-        punto.resultado = 'aprobada';
-      } else if (
-        punto.p_encontra > punto.p_afavor &&
-        punto.p_encontra > punto.p_abstencion
-      ) {
-        punto.resultado = 'rechazada';
-      } else {
-        punto.resultado = 'pendiente';
-      }
-
-      // ⬇️⬇️ INSERTAR AQUÍ: aplica/valida voto dirimente del Rector
-      // ⬇️ justo ANTES de save(punto), usa el estado PREVIO del flag
-      if (dirimentePrevio) {
-        const rectorPU = punto.puntoUsuarios.find(
-          (pu) => pu.usuario.grupoUsuario?.nombre?.toLowerCase() === 'rector',
-        );
-
-        if (!rectorPU || !rectorPU.opcion) {
-          throw new BadRequestException(
-            'El Rector debe emitir su voto dirimente antes de finalizar el cálculo.',
-          );
-        }
-
-        switch (rectorPU.opcion) {
-          case 'afavor':
-            punto.resultado = 'aprobada';
-            break;
-          case 'encontra':
-            punto.resultado = 'rechazada';
-            break;
-          case 'abstencion':
-            punto.resultado = 'pendiente'; // regla que pediste
-            break;
-        }
-      }
-
-      punto.estado = false;
-      await queryRunner.manager.save(punto);
-      await queryRunner.commitTransaction();
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      console.error('❌ Error al calcular resultados:', error);
-
-      // Si ya es una HttpException (p.ej., BadRequestException), no la sobrescribas
-  if (error instanceof HttpException) {
-    throw error;
-  }
-
-  // (Opcional) inspeccionar errores SQL
-  if (error instanceof QueryFailedError) {
-    console.error('Detalles de error SQL:', (error as any).message);
-  }
-
-  // Fallback genérico para errores no controlados
-  throw new InternalServerErrorException(
-    'Error al calcular los resultados automáticamente. Revisa los logs del servidor.',
-  );
-    } finally {
-      await queryRunner.release();
-    }
-  }
-
-  /*async calcularResultados(id_punto: number, id_usuario: number): Promise<void> {
-  const queryRunner = this.dataSource.createQueryRunner();
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
-
-  try {
-    await queryRunner.query(`SET @usuario_actual = ${id_usuario}`);
-
-    const punto = await queryRunner.manager.findOne(Punto, {
-      where: { id_punto },
-      relations: [
-        'resolucion',
-        'puntoUsuarios',
-        'puntoUsuarios.usuario',
-        'puntoUsuarios.usuario.grupoUsuario',
-      ],
-    });
-
-    if (!punto) throw new NotFoundException('Punto no encontrado');
-
-    let puntoUsuarios = punto.puntoUsuarios.filter((pu) => pu.estado);
-
-    if (punto.es_administrativa) {
-      puntoUsuarios = puntoUsuarios.filter(
-        (pu) => pu.usuario.grupoUsuario.nombre.toLowerCase() !== 'trabajador',
-      );
-    }
-
-    let n_afavor = 0,
-      n_encontra = 0,
-      n_abstencion = 0;
-    let p_afavor = 0,
-      p_encontra = 0,
-      p_abstencion = 0;
-    let totalPeso = 0;
-
-    for (const pu of puntoUsuarios) {
-      const peso = pu.usuario.grupoUsuario.peso || 0;
-      if (!pu.opcion || peso === 0) continue;
-
-      totalPeso += peso;
-
-      switch (pu.opcion) {
-        case 'afavor':
-          n_afavor++;
-          p_afavor += peso;
-          break;
-        case 'encontra':
-          n_encontra++;
-          p_encontra += peso;
-          break;
-        case 'abstencion':
-          n_abstencion++;
-          p_abstencion += peso;
-          break;
-      }
-    }
-
-    const normalizar = (valor: number) =>
-      totalPeso > 0 ? parseFloat(((valor / totalPeso) * 100).toFixed(2)) : 0;
-
-    punto.n_afavor = n_afavor;
-    punto.n_encontra = n_encontra;
-    punto.n_abstencion = n_abstencion;
-
-    punto.p_afavor = normalizar(p_afavor);
-    punto.p_encontra = normalizar(p_encontra);
-    punto.p_abstencion = normalizar(p_abstencion);
-
-    if (punto.resolucion) {
-      await queryRunner.manager.update('resolucion', punto.resolucion.id_punto, {
-        voto_manual: false,
-      });
-    }
-
-    if (
-      punto.p_afavor > punto.p_encontra &&
-      punto.p_afavor > punto.p_abstencion
-    ) {
-      punto.resultado = 'aprobada';
-    } else if (
-      punto.p_encontra > punto.p_afavor &&
-      punto.p_encontra > punto.p_abstencion
-    ) {
-      punto.resultado = 'rechazada';
-    } else {
-      punto.resultado = 'pendiente';
-    }
-
-    await queryRunner.manager.save(punto);
-    await queryRunner.commitTransaction();
-  } catch (error) {
-    await queryRunner.rollbackTransaction();
-    console.error('❌ Error al calcular resultados:', error);
-
-    if (error instanceof QueryFailedError) {
-      console.error('Detalles de error SQL:', (error as any).message);
-    }
-
-    throw new InternalServerErrorException(
-      'Error al calcular los resultados automáticamente. Revisa los logs del servidor.',
-    );
-  } finally {
-    await queryRunner.release();
-  }
-}*/
-
-  // ========================================
-  // CÁLCULO MANUAL DE RESULTADOS
-  // ========================================
-  async calcularResultadosManual(dto: ResultadoManualDto): Promise<void> {
-    const { id_punto, id_usuario, resultado } = dto;
-
-    const punto = await this.puntoRepo.findOne({
-      where: { id_punto },
-      relations: ['resolucion'],
-    });
-
-    if (!punto) throw new NotFoundException('Punto no encontrado');
-    if (!punto.resolucion)
-      throw new BadRequestException(
-        'No se puede registrar el resultado manual sin una resolución',
-      );
-
-    punto.resultado = resultado;
-    punto.resolucion.voto_manual = true;
-
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      punto.estado = false;
-      await queryRunner.query(`SET @usuario_actual = ?`, [id_usuario]);
-      await queryRunner.manager.save(punto.resolucion);
-      await queryRunner.manager.save(punto);
-      await queryRunner.commitTransaction();
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      console.error('Error al guardar la resolución manual:', error);
-      throw new BadRequestException('No se pudo guardar el resultado manual.');
-    } finally {
-      await queryRunner.release();
-    }
-  }
-
-  // ========================================
-  // CÁLCULO HIBRIDO DE RESULTADOS
-  // ========================================
-
-  async calcularResultadosHibrido(
-    idPunto: number,
-    votos: VotoDto[],
-  ): Promise<void> {
-    //console.log('📌 idPunto recibido:', idPunto);
-    //console.log('📥 votos:', votos);
-
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      // Verificar que el punto exista
-      const punto = await queryRunner.manager.findOne(Punto, {
-        where: { id_punto: idPunto },
-      });
       if (!punto) {
         throw new NotFoundException('Punto no encontrado');
       }
 
-      // Procesar cada voto recibido
-      for (const voto of votos) {
-        const puntoVoto = +voto.punto;
+      if (punto.resultado !== null && punto.resultado !== undefined) {
+        throw new BadRequestException('El punto ya tiene un resultado registrado.');
+      }
 
-        if (puntoVoto !== idPunto) {
+      for (const voto of votos) {
+        if (+voto.punto !== idPunto) {
           throw new BadRequestException(
-            `❌ Voto con punto inválido. Esperado: ${idPunto}, recibido: ${puntoVoto}`,
+            `Voto con punto invalido. Esperado: ${idPunto}, recibido: ${voto.punto}`,
           );
         }
 
-        // Buscar el PuntoUsuario correspondiente
         const puntoUsuario = await queryRunner.manager.findOne(PuntoUsuario, {
           where: {
             punto: { id_punto: idPunto },
             usuario: { id_usuario: voto.idUsuario },
           },
-          relations: ['usuario', 'punto'],
+          relations: ['usuario', 'punto', 'usuario.grupoUsuario'],
         });
 
         if (!puntoUsuario) {
           throw new NotFoundException(
-            `No se encontró puntoUsuario para usuario ${voto.idUsuario}`,
+            `No se encontro puntoUsuario para usuario ${voto.idUsuario}`,
           );
         }
 
-        // Verificar el votante
         const votante = await queryRunner.manager.findOne(Usuario, {
           where: { id_usuario: voto.votante },
         });
@@ -1100,146 +848,499 @@ export class PuntoService {
           );
         }
 
-        // Asignar datos al puntoUsuario
         puntoUsuario.opcion = voto.opcion;
         puntoUsuario.es_razonado = voto.es_razonado;
         puntoUsuario.votante = votante;
         puntoUsuario.fecha = new Date();
 
-        // Guardar los cambios
         await queryRunner.manager.save(PuntoUsuario, puntoUsuario);
       }
 
-      // Calcular resultados con la transacción activa
-      await this._calcularResultadosInterno(
-        idPunto,
-        votos[0].idUsuario,
-        queryRunner.manager,
-      );
+      await this._calcularResultadosInterno(idPunto, votos[0].idUsuario, queryRunner.manager, {
+        fuenteResultado: 'hibrido',
+      });
 
       await queryRunner.commitTransaction();
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      console.error('❌ Error en calcularResultadosHibrido:', error);
-      throw error;
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      if (error instanceof QueryFailedError) {
+        console.error('Detalles de error SQL:', (error as any).message);
+      }
+
+      throw error instanceof InternalServerErrorException
+        ? error
+        : new InternalServerErrorException(
+            'Error al procesar el calculo hibrido. Revisa los logs del servidor.',
+          );
     } finally {
       await queryRunner.release();
     }
   }
 
+
   private async _calcularResultadosInterno(
     id_punto: number,
     id_usuario: number,
     manager: EntityManager,
+    opciones: {
+      fuenteResultado: 'automatico' | 'manual' | 'hibrido';
+      overrideResultado?: 'aprobada' | 'rechazada' | 'pendiente' | 'empate';
+      recalcularVotos?: boolean;
+    } = { fuenteResultado: 'automatico' },
   ): Promise<void> {
-    // Establecer el usuario actual como variable de sesión SQL
-    await manager.query(`SET @usuario_actual = ${id_usuario}`);
+    const { fuenteResultado, overrideResultado, recalcularVotos = true } =
+      opciones;
+    const redondear2 = (valor: number) =>
+      Math.round((Number.isFinite(valor) ? valor : 0) * 100) / 100;
+    const numeroSeguro = (valor: any) => {
+      const parsed = Number(valor);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const normalizarTexto = (texto?: string | null) =>
+      (texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
 
-    // Cargar el punto con todas las relaciones necesarias
+    await manager.query(`SET @usuario_actual = ?`, [id_usuario]);
+
     const punto = await manager.findOne(Punto, {
       where: { id_punto },
       relations: [
         'resolucion',
+        'sesion',
         'puntoUsuarios',
         'puntoUsuarios.usuario',
         'puntoUsuarios.usuario.grupoUsuario',
       ],
     });
 
-    if (!punto) throw new NotFoundException('Punto no encontrado');
+    if (!punto) {
+      throw new NotFoundException('Punto no encontrado');
+    }
 
-    // Filtrar los votos válidos
-    let puntoUsuarios = punto.puntoUsuarios.filter((pu) => pu.estado);
-
-    // Si es administrativo, excluir trabajadores
-    if (punto.es_administrativa) {
-      puntoUsuarios = puntoUsuarios.filter(
-        (pu) => pu.usuario.grupoUsuario.nombre.toLowerCase() !== 'trabajador',
+    if (punto.resultado !== null && punto.resultado !== undefined) {
+      throw new BadRequestException(
+        'El punto ya tiene un resultado registrado. No es posible recalcularlo.',
       );
     }
 
-    // Variables de conteo
-    let n_afavor = 0,
-      n_encontra = 0,
-      n_abstencion = 0;
-    let p_afavor = 0,
-      p_encontra = 0,
-      p_abstencion = 0;
-    let totalPeso = 0;
-
-    // Contar votos y acumular pesos
-    for (const pu of puntoUsuarios) {
-      const peso = pu.usuario.grupoUsuario.peso || 0;
-      if (!pu.opcion || peso === 0) continue;
-
-      totalPeso += peso;
-
-      switch (pu.opcion) {
-        case 'afavor':
-          n_afavor++;
-          p_afavor += peso;
-          break;
-        case 'encontra':
-          n_encontra++;
-          p_encontra += peso;
-          break;
-        case 'abstencion':
-          n_abstencion++;
-          p_abstencion += peso;
-          break;
-      }
+    if (fuenteResultado === 'manual' && !punto.resolucion) {
+      throw new BadRequestException(
+        'No se puede registrar el resultado manual sin una resolucion asociada.',
+      );
     }
 
-    // Normalizador de porcentajes
-    const normalizar = (valor: number) =>
-      totalPeso > 0 ? parseFloat(((valor / totalPeso) * 100).toFixed(2)) : 0;
+    const esAdministrativa = !!punto.es_administrativa;
+    const dirimentePrevio = !!punto.requiere_voto_dirimente;
 
-    // Guardar resultados numéricos y porcentuales
-    punto.n_afavor = n_afavor;
-    punto.n_encontra = n_encontra;
-    punto.n_abstencion = n_abstencion;
+    let n_afavor = numeroSeguro(punto.n_afavor);
+    let n_encontra = numeroSeguro(punto.n_encontra);
+    let n_abstencion = numeroSeguro(punto.n_abstencion);
+    let p_afavor = redondear2(punto.p_afavor);
+    let p_encontra = redondear2(punto.p_encontra);
+    let p_abstencion = redondear2(punto.p_abstencion);
 
-    punto.p_afavor = normalizar(p_afavor);
-    punto.p_encontra = normalizar(p_encontra);
-    punto.p_abstencion = normalizar(p_abstencion);
+    if (recalcularVotos) {
+      let puntoUsuarios = punto.puntoUsuarios.filter((pu) => pu.estado);
 
-    // Desmarcar cálculo manual si existía
+      if (esAdministrativa) {
+        puntoUsuarios = puntoUsuarios.filter(
+          (pu) => normalizarTexto(pu.usuario?.grupoUsuario?.nombre) !== 'trabajador',
+        );
+      }
+
+      n_afavor = 0;
+      n_encontra = 0;
+      n_abstencion = 0;
+      p_afavor = 0;
+      p_encontra = 0;
+      p_abstencion = 0;
+
+      for (const pu of puntoUsuarios) {
+        const opcion = normalizarTexto(pu.opcion);
+        const peso = redondear2(numeroSeguro(pu.usuario?.grupoUsuario?.peso));
+        if (!opcion || peso <= 0) continue;
+
+        switch (opcion) {
+          case 'afavor':
+            n_afavor += 1;
+            p_afavor = redondear2(p_afavor + peso);
+            break;
+          case 'encontra':
+            n_encontra += 1;
+            p_encontra = redondear2(p_encontra + peso);
+            break;
+          case 'abstencion':
+            n_abstencion += 1;
+            p_abstencion = redondear2(p_abstencion + peso);
+            break;
+        }
+      }
+
+      punto.n_afavor = n_afavor;
+      punto.n_encontra = n_encontra;
+      punto.n_abstencion = n_abstencion;
+      punto.p_afavor = p_afavor;
+      punto.p_encontra = p_encontra;
+      punto.p_abstencion = p_abstencion;
+    }
+
+    const miembrosRepo = manager.getRepository(Miembro);
+    const asistenciaRepo = manager.getRepository(Asistencia);
+
+    const miembros = await miembrosRepo.find({
+      where: { estado: true, status: true },
+      relations: ['usuario', 'usuario.grupoUsuario'],
+    });
+
+    const miembrosElegibles = miembros.filter((m) => {
+      const grupo = normalizarTexto(m.usuario?.grupoUsuario?.nombre);
+      return !(esAdministrativa && grupo === 'trabajador');
+    });
+
+    const miembrosNominal = miembrosElegibles.length;
+    const censoPonderado = redondear2(
+      miembrosElegibles.reduce(
+        (acc, m) => acc + numeroSeguro(m.usuario?.grupoUsuario?.peso),
+        0,
+      ),
+    );
+
+    const asistencias = await asistenciaRepo.find({
+      where: {
+        sesion: { id_sesion: punto.sesion.id_sesion },
+        estado: true,
+        status: true,
+      },
+      relations: ['usuario', 'usuario.grupoUsuario'],
+    });
+
+    const presentesNominal = asistencias.filter((asist) => {
+      const tipo = normalizarTexto(asist.tipo_asistencia);
+      const grupo = normalizarTexto(asist.usuario?.grupoUsuario?.nombre);
+      if (tipo !== 'presente') return false;
+      if (esAdministrativa && grupo === 'trabajador') return false;
+      return true;
+    }).length;
+
+    if (presentesNominal <= 0) {
+      throw new BadRequestException(
+        'No se puede calcular el resultado porque no existen asistentes presentes.',
+      );
+    }
+
+    const quorumNominalMin = Math.ceil(miembrosNominal / 2);
+    if (presentesNominal < quorumNominalMin) {
+      throw new BadRequestException(
+        'No se puede calcular el resultado porque no se cumple el quorum nominal minimo.',
+      );
+    }
+
+    const nMitadMiembrosPresente = redondear2(Math.ceil(presentesNominal / 2));
+    const mitadMiembrosPonderado = redondear2(censoPonderado / 2);
+    const dosTercerasPonderado = redondear2((2 * censoPonderado) / 3);
+    const nDosTercerasMiembros = redondear2((2 * miembrosNominal) / 3);
+    const ausentes = Math.max(miembrosNominal - presentesNominal, 0);
+
+    const calculo =
+      punto.calculo_resultado === 'mayoria_especial'
+        ? 'mayoria_especial'
+        : 'mayoria_simple';
+
+    const umbralNominal =
+      calculo === 'mayoria_especial'
+        ? nDosTercerasMiembros
+        : nMitadMiembrosPresente;
+    const umbralPonderado =
+      calculo === 'mayoria_especial'
+        ? dosTercerasPonderado
+        : mitadMiembrosPonderado;
+
+    const estadoNominalAuto: EstadoInterno =
+      n_afavor >= umbralNominal && n_afavor > n_encontra
+        ? 'APROBADO'
+        : n_encontra >= umbralNominal && n_encontra > n_afavor
+        ? 'RECHAZADO'
+        : 'SIN_MAYORIA';
+
+    const estadoPonderadoAuto: EstadoInterno =
+      p_afavor >= umbralPonderado && p_afavor > p_encontra
+        ? 'APROBADO'
+        : p_encontra >= umbralPonderado && p_encontra > p_afavor
+        ? 'RECHAZADO'
+        : 'SIN_MAYORIA';
+
+    const empateNominal =
+      n_afavor === n_encontra && n_afavor >= umbralNominal && n_afavor > 0;
+    const empatePonderado =
+      Math.abs(p_afavor - p_encontra) < 0.01 &&
+      p_afavor >= umbralPonderado &&
+      p_afavor > 0;
+
+    let requiereDirimente = empateNominal || empatePonderado;
+
+    if (dirimentePrevio) {
+      const rector = punto.puntoUsuarios.find((pu) => {
+        const grupo = normalizarTexto(pu.usuario?.grupoUsuario?.nombre);
+        return grupo === 'rector';
+      });
+
+      if (!rector || !rector.opcion) {
+        throw new BadRequestException(
+          'El Rector debe registrar su voto dirimente antes de cerrar el resultado.',
+        );
+      }
+
+      requiereDirimente = false;
+    }
+
+    let estadoNominal: EstadoInterno = estadoNominalAuto;
+    let estadoPonderado: EstadoInterno = estadoPonderadoAuto;
+
+    if (overrideResultado) {
+      const estadoOverride: EstadoInterno =
+        overrideResultado === 'aprobada'
+          ? 'APROBADO'
+          : overrideResultado === 'rechazada'
+          ? 'RECHAZADO'
+          : 'SIN_MAYORIA';
+      estadoNominal = estadoOverride;
+      estadoPonderado = estadoOverride;
+    }
+
+    let resultadoFinal:
+      | 'aprobada'
+      | 'rechazada'
+      | 'pendiente'
+      | 'empate'
+      | null = null;
+
+    if (overrideResultado) {
+      resultadoFinal = overrideResultado;
+      requiereDirimente = false;
+    } else if (requiereDirimente) {
+      resultadoFinal = null;
+    } else if (estadoNominal === 'APROBADO' && estadoPonderado === 'APROBADO') {
+      resultadoFinal = 'aprobada';
+    } else if (
+      estadoNominal === 'RECHAZADO' &&
+      estadoPonderado === 'RECHAZADO'
+    ) {
+      resultadoFinal = 'rechazada';
+    } else {
+      resultadoFinal = 'pendiente';
+    }
+
+    punto.requiere_voto_dirimente = requiereDirimente;
+    punto.resultado = resultadoFinal;
+    punto.estado = resultadoFinal !== null ? false : punto.estado;
+
     if (punto.resolucion) {
-      await manager.update('resolucion', punto.resolucion.id_punto, {
-        voto_manual: false,
+      await manager
+        .getRepository(Resolucion)
+        .update(punto.resolucion.id_punto, { fuente_resultado: fuenteResultado });
+    }
+
+    let resultadoDetalle = await manager.findOne(Resultado, {
+      where: { id_punto: punto.id_punto },
+    });
+
+    if (!resultadoDetalle) {
+      resultadoDetalle = this.resultadoRepo.create({
+        id_punto: punto.id_punto,
       });
     }
 
-    // Empate ponderado
-    if (p_afavor === p_encontra && p_afavor !== 0) {
-      punto.resultado = 'empate';
+    resultadoDetalle.n_mitad_miembros_presente = nMitadMiembrosPresente;
+    resultadoDetalle.mitad_miembros_ponderado = mitadMiembrosPonderado;
+    resultadoDetalle.dos_terceras_ponderado = dosTercerasPonderado;
+    resultadoDetalle.n_dos_terceras_miembros = nDosTercerasMiembros;
+    const mapEstadoResultado = (
+      estado: EstadoInterno,
+      esEmpate: boolean,
+    ): EstadoFinal => {
+      if (estado === 'APROBADO') return 'aprobada';
+      if (estado === 'RECHAZADO') return 'rechazada';
+      return esEmpate ? 'empate' : 'pendiente';
+    };
 
-      if (!punto.requiere_voto_dirimente) {
-        punto.requiere_voto_dirimente = true;
+    resultadoDetalle.n_ausentes = ausentes;
+    resultadoDetalle.n_total = miembrosNominal;
+    resultadoDetalle.estado_nominal = mapEstadoResultado(
+      estadoNominal,
+      empateNominal,
+    );
+    resultadoDetalle.estado_ponderado = mapEstadoResultado(
+      estadoPonderado,
+      empatePonderado,
+    );
 
-        const rectorPU = punto.puntoUsuarios.find(
-          (pu) =>
-            pu.usuario.grupoUsuario.nombre.toLowerCase() === 'rector' &&
-            pu.estado === false,
-        );
+    punto.resultadoDetalle = resultadoDetalle;
 
-        if (rectorPU) {
-          rectorPU.estado = true;
-          await manager.save(PuntoUsuario, rectorPU);
-        }
-      }
-    } else if (p_afavor > p_encontra && p_afavor > p_abstencion) {
-      punto.resultado = 'aprobada';
-    } else if (p_encontra > p_afavor && p_encontra > p_abstencion) {
-      punto.resultado = 'rechazada';
-    } else {
-      punto.resultado = 'pendiente';
-    }
-
-    // Guardar el punto con sus resultados
-    punto.estado = false;
+    await manager.save(Resultado, resultadoDetalle);
     await manager.save(punto);
   }
+
+  /**
+   * Devuelve true si el punto existe y está habilitado (estado = true).
+   * No lanza excepción si no existe: simplemente retorna false,
+   * para que el cliente pueda decidir no enviar el voto.
+   */
+  async estaHabilitado(idPunto: number): Promise<boolean> {
+    const row = await this.puntoRepo
+      .createQueryBuilder('p')
+      .select(['p.id_punto', 'p.estado', 'p.status'])
+      .where('p.id_punto = :idPunto', { idPunto })
+      .getOne();
+
+    // Si no existe o está desactivado lógicamente, consideramos no habilitado
+    if (!row) return false;
+    return !!row.estado; // solo validas "estado"; si quieres, puedes añadir && !!row.status
+  }
+
+  
+
+async getResumenBase(idPunto: number) {
+  const punto = await this.puntoRepo.findOne({
+    where: { id_punto: idPunto },
+    relations: ['sesion'],
+  });
+  if (!punto) throw new NotFoundException('Punto no encontrado');
+
+  const esAdmin = !!punto.es_administrativa;
+  const idSesion = punto.sesion.id_sesion;
+
+  // Censo (Miembro)
+  const miembros = await this.miembroRepo.find({
+    where: { estado: true, status: true },
+    relations: ['usuario', 'usuario.grupoUsuario'],
+  });
+  const elegibleMiembro = (m:any) => !(esAdmin && (m.usuario?.grupoUsuario?.nombre||'').toLowerCase()==='trabajador');
+  const miembrosElig = miembros.filter(elegibleMiembro);
+  const miembrosNominal = miembrosElig.length;
+  const censoPond = +miembrosElig.reduce((a,m)=>a+(m.usuario?.grupoUsuario?.peso||0),0).toFixed(2);
+
+  // Presentes (Asistencia)
+  const asist = await this.asistenciaRepo.find({
+    where: { sesion: { id_sesion: idSesion }, estado: true, status: true },
+    relations: ['usuario','usuario.grupoUsuario'],
+  });
+  const elegiblePresente = (a:any)=>{
+    const t=(a.tipo_asistencia||'').toLowerCase();
+    const g=a.usuario?.grupoUsuario?.nombre||'';
+    const okT=(t==='presente');
+    return okT && !(esAdmin && g.toLowerCase()==='trabajador');
+  };
+  const presentesNominal = asist.filter(elegiblePresente).length;
+
+  // Míminimos (igual al Excel, con 2 decimales)
+  const to2 = (n:number)=>+n.toFixed(2);
+  return {
+    punto: { id: punto.id_punto, esAdministrativa: esAdmin, id_sesion: idSesion },
+    resumen_excel: {
+      bases: {
+        presentes_nominal: presentesNominal,
+        miembros_nominal: miembrosNominal,
+        censo_ponderado: to2(censoPond),
+      },
+      minimos: {
+        mitad_presentes_nominal: to2(presentesNominal/2),
+        mitad_miembros_ponderado: to2(censoPond/2),
+        dos_tercios_ponderado: to2((2*censoPond)/3),
+        dos_tercios_miembros_nominal: to2((2*miembrosNominal)/3),
+        mayoria_simple: to2(presentesNominal/2),
+      }
+    }
+  };
+}
+
+async getResumenPonderado(idPunto: number) {
+  const punto = await this.puntoRepo.findOne({
+    where: { id_punto: idPunto },
+    relations: ['sesion'],
+  });
+  if (!punto) throw new NotFoundException('Punto no encontrado');
+  const esAdmin = !!punto.es_administrativa;
+
+  // helpers numéricos robustos
+  const num = (v: any) => {
+    if (v === null || v === undefined) return 0;
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const to2 = (n: number) => Math.round(n * 100) / 100;
+
+  // 1) Resultados ya guardados (forzar a número)
+  const nA = num(punto.n_afavor);
+  const nC = num(punto.n_encontra);
+  const nAb = num(punto.n_abstencion);
+
+  const pA = to2(num(punto.p_afavor));
+  const pC = to2(num(punto.p_encontra));
+  const pAb = to2(num(punto.p_abstencion));
+
+  const presNom = nA + nC + nAb;
+  const presPond = to2(pA + pC + pAb);
+
+  // 2) Censo y presentes (para míminimos y ausentes)
+  const miembros = await this.miembroRepo.find({
+    where: { estado: true, status: true },
+    relations: ['usuario', 'usuario.grupoUsuario'],
+  });
+  const miembrosElig = miembros.filter((m: any) => {
+    const g = (m.usuario?.grupoUsuario?.nombre || '').toLowerCase();
+    return !(esAdmin && g === 'trabajador');
+  });
+
+  const miembrosNominal = miembrosElig.length;
+  const censoPond = to2(
+    miembrosElig.reduce((a: number, m: any) => a + num(m.usuario?.grupoUsuario?.peso), 0)
+  );
+
+  const minNom = to2(presNom / 2);
+  const minPond = to2(censoPond / 2);
+
+  // 3) Estados
+  const estadoPond =
+    pA >= minPond && pA > pC ? 'APROBADO' :
+    pC >= minPond && pC > pA ? 'RECHAZADO' :
+    pA === pC && pA >= minPond ? 'SIN_MAYORIA' : 'SIN_MAYORIA';
+
+  const estadoNom =
+    nA >= minNom && nA > nC ? 'APROBADO' :
+    nC >= minNom && nC > nA ? 'RECHAZADO' :
+    nA === nC && nA >= minNom ? 'SIN_MAYORIA' : 'SIN_MAYORIA';
+
+  const requiereDirimente = (pA === pC && pA >= minPond) || (nA === nC && nA >= minNom);
+
+  return {
+    punto: { id: punto.id_punto, esAdministrativa: esAdmin },
+    resultados: {
+      nominal:   { a_favor: nA, en_contra: nC, abstencion: nAb, presentes: presNom },
+      ponderado: { a_favor: pA, en_contra: pC, abstencion: pAb, presentes: presPond }
+    },
+    minimos: { nominal: minNom, ponderado: minPond },
+    estados: {
+      ponderado: estadoPond,
+      nominal: estadoNom,
+      requiere_voto_dirimente: requiereDirimente,
+      motivo: (estadoPond === 'APROBADO' || estadoNom === 'APROBADO') ? 'a_favor >= minimo' : 'sin umbral suficiente'
+    },
+    votos_resumen: {
+      a_favor: nA,
+      en_contra: nC,
+      abstencion: nAb,
+      ausentes: Math.max(0, miembrosNominal - presNom),
+      total: miembrosNominal
+    }
+  };
+}
 
   // ========================================
   // CONSULTA AVANZADA DE RESULTADOS
@@ -1298,164 +1399,5 @@ export class PuntoService {
 
     return [...resultados, { resultado: totales }];
   }
-
-  /**
-   * Devuelve true si el punto existe y está habilitado (estado = true).
-   * No lanza excepción si no existe: simplemente retorna false,
-   * para que el cliente pueda decidir no enviar el voto.
-   */
-  async estaHabilitado(idPunto: number): Promise<boolean> {
-    const row = await this.puntoRepo
-      .createQueryBuilder('p')
-      .select(['p.id_punto', 'p.estado', 'p.status'])
-      .where('p.id_punto = :idPunto', { idPunto })
-      .getOne();
-
-    // Si no existe o está desactivado lógicamente, consideramos no habilitado
-    if (!row) return false;
-    return !!row.estado; // solo validas "estado"; si quieres, puedes añadir && !!row.status
-  }
-
-  
-
-async getResumenBase(idPunto: number) {
-  const punto = await this.puntoRepo.findOne({
-    where: { id_punto: idPunto },
-    relations: ['sesion'],
-  });
-  if (!punto) throw new NotFoundException('Punto no encontrado');
-
-  const esAdmin = !!punto.es_administrativa;
-  const idSesion = punto.sesion.id_sesion;
-
-  // Censo (Miembro)
-  const miembros = await this.miembroRepo.find({
-    where: { estado: true, status: true },
-    relations: ['usuario', 'usuario.grupoUsuario'],
-  });
-  const elegibleMiembro = (m:any) => !(esAdmin && (m.usuario?.grupoUsuario?.nombre||'').toLowerCase()==='trabajador');
-  const miembrosElig = miembros.filter(elegibleMiembro);
-  const miembrosNominal = miembrosElig.length;
-  const censoPond = +miembrosElig.reduce((a,m)=>a+(m.usuario?.grupoUsuario?.peso||0),0).toFixed(2);
-
-  // Presentes (Asistencia)
-  const asist = await this.asistenciaRepo.find({
-    where: { sesion: { id_sesion: idSesion }, estado: true, status: true },
-    relations: ['usuario','usuario.grupoUsuario'],
-  });
-  const elegiblePresente = (a:any)=>{
-    const t=(a.tipo_asistencia||'').toLowerCase();
-    const g=a.usuario?.grupoUsuario?.nombre||'';
-    const okT=(t==='presente');
-    return okT && !(esAdmin && g.toLowerCase()==='trabajador');
-  };
-  const presentesNominal = asist.filter(elegiblePresente).length;
-
-  // Mínimos (igual al Excel, con 2 decimales)
-  const to2 = (n:number)=>+n.toFixed(2);
-  return {
-    punto: { id: punto.id_punto, esAdministrativa: esAdmin, id_sesion: idSesion },
-    resumen_excel: {
-      bases: {
-        presentes_nominal: presentesNominal,
-        miembros_nominal: miembrosNominal,
-        censo_ponderado: to2(censoPond),
-      },
-      minimos: {
-        mitad_presentes_nominal: to2(presentesNominal/2),
-        mitad_miembros_ponderado: to2(censoPond/2),
-        dos_tercios_ponderado: to2((2*censoPond)/3),
-        dos_tercios_miembros_nominal: to2((2*miembrosNominal)/3),
-        mayoria_simple: to2(presentesNominal/2),
-      }
-    }
-  };
-}
-
-async getResumenPonderado(idPunto: number) {
-  const punto = await this.puntoRepo.findOne({
-    where: { id_punto: idPunto },
-    relations: ['sesion'],
-  });
-  if (!punto) throw new NotFoundException('Punto no encontrado');
-  const esAdmin = !!punto.es_administrativa;
-
-  // helpers numéricos robustos
-  const num = (v: any) => {
-    if (v === null || v === undefined) return 0;
-    const n = typeof v === 'number' ? v : parseFloat(String(v));
-    return Number.isFinite(n) ? n : 0;
-  };
-  const to2 = (n: number) => Math.round(n * 100) / 100;
-
-  // 1) Resultados ya guardados (forzar a número)
-  const nA = num(punto.n_afavor);
-  const nC = num(punto.n_encontra);
-  const nAb = num(punto.n_abstencion);
-
-  const pA = to2(num(punto.p_afavor));
-  const pC = to2(num(punto.p_encontra));
-  const pAb = to2(num(punto.p_abstencion));
-
-  const presNom = nA + nC + nAb;
-  const presPond = to2(pA + pC + pAb);
-
-  // 2) Censo y presentes (para mínimos y ausentes)
-  const miembros = await this.miembroRepo.find({
-    where: { estado: true, status: true },
-    relations: ['usuario', 'usuario.grupoUsuario'],
-  });
-  const miembrosElig = miembros.filter((m: any) => {
-    const g = (m.usuario?.grupoUsuario?.nombre || '').toLowerCase();
-    return !(esAdmin && g === 'trabajador');
-  });
-
-  const miembrosNominal = miembrosElig.length;
-  const censoPond = to2(
-    miembrosElig.reduce((a: number, m: any) => a + num(m.usuario?.grupoUsuario?.peso), 0)
-  );
-
-  const minNom = to2(presNom / 2);
-  const minPond = to2(censoPond / 2);
-
-  // 3) Estados
-  const estadoPond =
-    pA >= minPond && pA > pC ? 'APROBADO' :
-    pC >= minPond && pC > pA ? 'RECHAZADO' :
-    pA === pC && pA >= minPond ? 'SIN_MAYORIA' : 'SIN_MAYORIA';
-
-  const estadoNom =
-    nA >= minNom && nA > nC ? 'APROBADO' :
-    nC >= minNom && nC > nA ? 'RECHAZADO' :
-    nA === nC && nA >= minNom ? 'SIN_MAYORIA' : 'SIN_MAYORIA';
-
-  const requiereDirimente = (pA === pC && pA >= minPond) || (nA === nC && nA >= minNom);
-
-  return {
-    punto: { id: punto.id_punto, esAdministrativa: esAdmin },
-    resultados: {
-      nominal:   { a_favor: nA, en_contra: nC, abstencion: nAb, presentes: presNom },
-      ponderado: { a_favor: pA, en_contra: pC, abstencion: pAb, presentes: presPond }
-    },
-    minimos: { nominal: minNom, ponderado: minPond },
-    estados: {
-      ponderado: estadoPond,
-      nominal: estadoNom,
-      requiere_voto_dirimente: requiereDirimente,
-      motivo: (estadoPond === 'APROBADO' || estadoNom === 'APROBADO') ? 'a_favor >= mínimo' : 'sin umbral suficiente'
-    },
-    votos_resumen: {
-      a_favor: nA,
-      en_contra: nC,
-      abstencion: nAb,
-      ausentes: Math.max(0, miembrosNominal - presNom),
-      total: miembrosNominal
-    }
-  };
-}
-
-
-
-
 
 }

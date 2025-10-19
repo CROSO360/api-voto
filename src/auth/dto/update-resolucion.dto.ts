@@ -3,7 +3,7 @@
 // Actualiza una resolución existente asociada a un punto
 // =======================================================
 
-import { IsString, IsNotEmpty, IsNumber, IsDate } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsDate, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateResolucionDto {
@@ -28,6 +28,8 @@ export class UpdateResolucionDto {
   @IsNotEmpty({ message: 'La fecha de la resolución es obligatoria' })
   fecha: Date;
 
-  // Campo opcional para marcar si el voto fue manual
-  voto_manual?: boolean;
+  // Fuente opcional para indicar c�mo se obtuvo el resultado (ej. manual, automatico)
+  @IsOptional()
+  @IsString()
+  fuente_resultado?: string;
 }
