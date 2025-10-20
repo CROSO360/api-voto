@@ -4,7 +4,7 @@
 
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, IsNull } from 'typeorm';
+import { DataSource, Repository, IsNull, In } from 'typeorm';
 
 // Servicios y entidades relacionados
 import { BaseService } from 'src/commons/commons.service';
@@ -15,6 +15,7 @@ import { Usuario } from 'src/usuario/usuario.entity';
 import { PuntoUsuarioService } from 'src/punto-usuario/punto-usuario.service';
 import { Punto } from 'src/punto/punto.entity';
 import { Resultado } from 'src/resultado/resultado.entity';
+import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
 
 // =======================================================
 // SERVICIO: AsistenciaService
@@ -215,31 +216,48 @@ export class AsistenciaService extends BaseService<Asistencia> {
         relations: ['usuario', 'usuario.grupoUsuario'],
       });
 
+      const asistenciaPorUsuario = new Map<number, string>();
+      const grupoPorUsuario = new Map<number, string>();
+      for (const asistencia of asistencias) {
+        const idUsuario = asistencia.usuario?.id_usuario;
+        if (!idUsuario) continue;
+        const tipo = (asistencia.tipo_asistencia || '').toLowerCase();
+        asistenciaPorUsuario.set(idUsuario, tipo);
+        const grupo = (asistencia.usuario.grupoUsuario?.nombre || '').toLowerCase();
+        grupoPorUsuario.set(idUsuario, grupo);
+      }
+
       const miembros = await manager.getRepository(Miembro).find({
         where: { estado: true, status: true },
         relations: ['usuario', 'usuario.grupoUsuario'],
       });
 
-      const contarPresentes = (excluirTrabajador: boolean) =>
-        asistencias.filter((asistencia) => {
-          const tipo = (asistencia.tipo_asistencia || '').toLowerCase();
-          if (tipo !== 'presente') return false;
-          if (!excluirTrabajador) return true;
-          const grupo = (asistencia.usuario?.grupoUsuario?.nombre || '').toLowerCase();
-          return grupo !== 'trabajador';
-        }).length;
+      const puntosIds = puntosPendientes.map((p) => p.id_punto);
+      const puntoUsuarios = await manager.getRepository(PuntoUsuario).find({
+        where: { punto: { id_punto: In(puntosIds) } },
+        relations: ['punto', 'usuario'],
+      });
 
-      const contarMiembros = (excluirTrabajador: boolean) =>
-        miembros.filter((m) => {
-          const grupo = (m.usuario?.grupoUsuario?.nombre || '').toLowerCase();
-          return !(excluirTrabajador && grupo === 'trabajador');
-        }).length;
+      const inhabilitadosPorPunto = new Map<number, Set<number>>();
+      for (const pu of puntoUsuarios) {
+        if (pu.estado !== false) continue;
+        const puntoId = pu.punto?.id_punto;
+        const usuarioId = pu.usuario?.id_usuario;
+        if (!puntoId || !usuarioId) continue;
+        if (!inhabilitadosPorPunto.has(puntoId)) {
+          inhabilitadosPorPunto.set(puntoId, new Set<number>());
+        }
+        inhabilitadosPorPunto.get(puntoId)!.add(usuarioId);
+      }
+
+      const esTrabajador = (nombre?: string | null) =>
+        (nombre || '').toLowerCase() === 'trabajador';
 
       const resultadoRepo = manager.getRepository(Resultado);
       const to2 = (n: number) => Math.round(n * 100) / 100;
 
       for (const punto of puntosPendientes) {
-        const presentes = contarPresentes(!!punto.es_administrativa);
+        const excluirTrabajador = !!punto.es_administrativa;
 
         let resultado = await resultadoRepo.findOne({
           where: { id_punto: punto.id_punto },
@@ -249,8 +267,24 @@ export class AsistenciaService extends BaseService<Asistencia> {
           resultado = resultadoRepo.create({ id_punto: punto.id_punto });
         }
 
-        const miembrosNominal = contarMiembros(!!punto.es_administrativa);
-        const ausentes = Math.max(miembrosNominal - presentes, 0);
+        const miembrosConsiderados = miembros.filter((m) => {
+          const grupo = m.usuario?.grupoUsuario?.nombre;
+          return !(excluirTrabajador && esTrabajador(grupo));
+        });
+
+        const inhabilitados = inhabilitadosPorPunto.get(punto.id_punto) ?? new Set<number>();
+
+        const ausentes = miembrosConsiderados.filter((m) => {
+          const idUsuario = m.usuario?.id_usuario;
+          if (!idUsuario) return false;
+          const tipo = asistenciaPorUsuario.get(idUsuario);
+          if (tipo === 'ausente') return true;
+          if (inhabilitados.has(idUsuario)) return true;
+          return false;
+        }).length;
+
+        const miembrosNominal = miembrosConsiderados.length;
+        const presentes = Math.max(miembrosNominal - ausentes, 0);
 
         resultado.n_mitad_miembros_presente = to2(Math.ceil(presentes / 2));
         resultado.n_ausentes = ausentes;
