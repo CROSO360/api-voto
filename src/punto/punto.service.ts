@@ -958,30 +958,34 @@ export class PuntoService {
       n_afavor = 0;
       n_encontra = 0;
       n_abstencion = 0;
-      p_afavor = 0;
-      p_encontra = 0;
-      p_abstencion = 0;
+      let sumaPAfavor = 0;
+      let sumaPEncontra = 0;
+      let sumaPAbstencion = 0;
 
       for (const pu of puntoUsuarios) {
         const opcion = normalizarTexto(pu.opcion);
-        const peso = redondear2(numeroSeguro(pu.usuario?.grupoUsuario?.peso));
+        const peso = numeroSeguro(pu.usuario?.grupoUsuario?.peso);
         if (!opcion || peso <= 0) continue;
 
         switch (opcion) {
           case 'afavor':
             n_afavor += 1;
-            p_afavor = redondear2(p_afavor + peso);
+            sumaPAfavor += peso;
             break;
           case 'encontra':
             n_encontra += 1;
-            p_encontra = redondear2(p_encontra + peso);
+            sumaPEncontra += peso;
             break;
           case 'abstencion':
             n_abstencion += 1;
-            p_abstencion = redondear2(p_abstencion + peso);
+            sumaPAbstencion += peso;
             break;
         }
       }
+
+      p_afavor = redondear2(sumaPAfavor);
+      p_encontra = redondear2(sumaPEncontra);
+      p_abstencion = redondear2(sumaPAbstencion);
 
       punto.n_afavor = n_afavor;
       punto.n_encontra = n_encontra;

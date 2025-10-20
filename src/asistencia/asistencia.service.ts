@@ -215,6 +215,11 @@ export class AsistenciaService extends BaseService<Asistencia> {
         relations: ['usuario', 'usuario.grupoUsuario'],
       });
 
+      const miembros = await manager.getRepository(Miembro).find({
+        where: { estado: true, status: true },
+        relations: ['usuario', 'usuario.grupoUsuario'],
+      });
+
       const contarPresentes = (excluirTrabajador: boolean) =>
         asistencias.filter((asistencia) => {
           const tipo = (asistencia.tipo_asistencia || '').toLowerCase();
@@ -222,6 +227,12 @@ export class AsistenciaService extends BaseService<Asistencia> {
           if (!excluirTrabajador) return true;
           const grupo = (asistencia.usuario?.grupoUsuario?.nombre || '').toLowerCase();
           return grupo !== 'trabajador';
+        }).length;
+
+      const contarMiembros = (excluirTrabajador: boolean) =>
+        miembros.filter((m) => {
+          const grupo = (m.usuario?.grupoUsuario?.nombre || '').toLowerCase();
+          return !(excluirTrabajador && grupo === 'trabajador');
         }).length;
 
       const resultadoRepo = manager.getRepository(Resultado);
@@ -238,7 +249,12 @@ export class AsistenciaService extends BaseService<Asistencia> {
           resultado = resultadoRepo.create({ id_punto: punto.id_punto });
         }
 
+        const miembrosNominal = contarMiembros(!!punto.es_administrativa);
+        const ausentes = Math.max(miembrosNominal - presentes, 0);
+
         resultado.n_mitad_miembros_presente = to2(Math.ceil(presentes / 2));
+        resultado.n_ausentes = ausentes;
+        resultado.n_total = miembrosNominal;
         await resultadoRepo.save(resultado);
       }
     });
