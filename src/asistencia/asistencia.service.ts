@@ -250,15 +250,10 @@ export class AsistenciaService extends BaseService<Asistencia> {
         inhabilitadosPorPunto.get(puntoId)!.add(usuarioId);
       }
 
-      const esTrabajador = (nombre?: string | null) =>
-        (nombre || '').toLowerCase() === 'trabajador';
-
       const resultadoRepo = manager.getRepository(Resultado);
       const to2 = (n: number) => Math.round(n * 100) / 100;
 
       for (const punto of puntosPendientes) {
-        const excluirTrabajador = !!punto.es_administrativa;
-
         let resultado = await resultadoRepo.findOne({
           where: { id_punto: punto.id_punto },
         });
@@ -267,14 +262,9 @@ export class AsistenciaService extends BaseService<Asistencia> {
           resultado = resultadoRepo.create({ id_punto: punto.id_punto });
         }
 
-        const miembrosConsiderados = miembros.filter((m) => {
-          const grupo = m.usuario?.grupoUsuario?.nombre;
-          return !(excluirTrabajador && esTrabajador(grupo));
-        });
-
         const inhabilitados = inhabilitadosPorPunto.get(punto.id_punto) ?? new Set<number>();
 
-        const ausentes = miembrosConsiderados.filter((m) => {
+        const ausentes = miembros.filter((m) => {
           const idUsuario = m.usuario?.id_usuario;
           if (!idUsuario) return false;
           const tipo = asistenciaPorUsuario.get(idUsuario);
@@ -283,10 +273,17 @@ export class AsistenciaService extends BaseService<Asistencia> {
           return false;
         }).length;
 
-        const miembrosNominal = miembrosConsiderados.length;
-        const presentes = Math.max(miembrosNominal - ausentes, 0);
+        const miembrosNominal = miembros.length;
+        const presentesFisicos = asistencias.filter((asistencia) => {
+          const idUsuario = asistencia.usuario?.id_usuario;
+          if (!idUsuario) return false;
+          const tipo = asistenciaPorUsuario.get(idUsuario);
+          return tipo === 'presente';
+        }).length;
 
-        resultado.n_mitad_miembros_presente = to2(Math.ceil(presentes / 2));
+        resultado.n_mitad_miembros_presente = to2(
+          Math.ceil(presentesFisicos / 2),
+        );
         resultado.n_ausentes = ausentes;
         resultado.n_total = miembrosNominal;
         await resultadoRepo.save(resultado);

@@ -191,6 +191,8 @@ export class PuntoService {
       idSesion,
     );
 
+    await this.inicializarResolucionYResultado(puntoGuardado);
+
     return puntoGuardado;
   }
 
@@ -548,6 +550,9 @@ export class PuntoService {
       puntoGuardado.id_punto,
       sesion.id_sesion
     );
+
+    await this.inicializarResolucionYResultado(puntoGuardado);
+
     return puntoGuardado;
   }
 
@@ -666,6 +671,9 @@ export class PuntoService {
       puntoGuardado.id_punto,
       sesion.id_sesion,
     );
+
+    await this.inicializarResolucionYResultado(puntoGuardado);
+
     return puntoGuardado;
   }
 
@@ -702,6 +710,47 @@ export class PuntoService {
       .values(values)
       .orIgnore() // ⬅️ Ignora (id_punto, id_usuario) repetidos
       .execute();
+  }
+
+
+  private async inicializarResolucionYResultado(
+    punto: Punto,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const resolucionRepo = manager
+      ? manager.getRepository(Resolucion)
+      : this.resolucionRepo;
+    const resultadoRepo = manager
+      ? manager.getRepository(Resultado)
+      : this.resultadoRepo;
+
+    const resolucionExistente = await resolucionRepo.findOne({
+      where: { id_punto: punto.id_punto },
+    });
+
+    if (!resolucionExistente) {
+      const resolucion = resolucionRepo.create({
+        id_punto: punto.id_punto,
+        nombre: 'Borrador de resolucion',
+        descripcion: 'Resolucion en elaboracion',
+        fecha: new Date(),
+        fuente_resultado: null,
+        estado: true,
+        status: true,
+      });
+      await resolucionRepo.save(resolucion);
+    }
+
+    const resultadoExistente = await resultadoRepo.findOne({
+      where: { id_punto: punto.id_punto },
+    });
+
+    if (!resultadoExistente) {
+      const resultado = resultadoRepo.create({
+        id_punto: punto.id_punto,
+      });
+      await resultadoRepo.save(resultado);
+    }
   }
 
   // ========================================
@@ -955,6 +1004,21 @@ export class PuntoService {
         );
       }
 
+      if (fuenteResultado === 'automatico') {
+        const sinVoto = puntoUsuarios
+          .filter((pu) => !normalizarTexto(pu.opcion))
+          .map((pu) => pu.id_punto_usuario)
+          .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
+
+        if (sinVoto.length > 0) {
+          throw new BadRequestException({
+            code: 'VOTOS_PENDIENTES',
+            message: 'Existen miembros habilitados sin voto registrado.',
+            data: { puntoUsuariosSinVoto: sinVoto },
+          });
+        }
+      }
+
       n_afavor = 0;
       n_encontra = 0;
       n_abstencion = 0;
@@ -1008,7 +1072,7 @@ export class PuntoService {
       return !(esAdministrativa && grupo === 'trabajador');
     });
 
-    const miembrosNominal = miembrosElegibles.length;
+    const miembrosNominal = miembros.length;
     const censoPonderado = redondear2(
       miembrosElegibles.reduce(
         (acc, m) => acc + numeroSeguro(m.usuario?.grupoUsuario?.peso),
@@ -1025,32 +1089,58 @@ export class PuntoService {
       relations: ['usuario', 'usuario.grupoUsuario'],
     });
 
-    const presentesNominal = asistencias.filter((asist) => {
-      const tipo = normalizarTexto(asist.tipo_asistencia);
-      const grupo = normalizarTexto(asist.usuario?.grupoUsuario?.nombre);
+    const asistenciaPorUsuario = new Map<number, string>();
+    for (const asist of asistencias) {
+      const idUsuario = asist.usuario?.id_usuario;
+      if (!idUsuario) continue;
+      asistenciaPorUsuario.set(
+        idUsuario,
+        normalizarTexto(asist.tipo_asistencia),
+      );
+    }
+
+    const inhabilitados = new Set<number>();
+    for (const pu of punto.puntoUsuarios || []) {
+      if (pu.estado === false && pu.usuario?.id_usuario) {
+        inhabilitados.add(pu.usuario.id_usuario);
+      }
+    }
+
+    const presentesFisicos = miembros.filter((m) => {
+      const idUsuario = m.usuario?.id_usuario;
+      if (!idUsuario) return false;
+      const tipo = asistenciaPorUsuario.get(idUsuario) ?? 'ausente';
       if (tipo !== 'presente') return false;
-      if (esAdministrativa && grupo === 'trabajador') return false;
       return true;
     }).length;
 
-    if (presentesNominal <= 0) {
+    const ausentesNegocio = miembros.filter((m) => {
+      const idUsuario = m.usuario?.id_usuario;
+      if (!idUsuario) return false;
+      const tipo = asistenciaPorUsuario.get(idUsuario);
+      if (tipo === 'ausente') return true;
+      if (inhabilitados.has(idUsuario)) return true;
+      return false;
+    }).length;
+
+    if (presentesFisicos <= 0) {
       throw new BadRequestException(
         'No se puede calcular el resultado porque no existen asistentes presentes.',
       );
     }
 
     const quorumNominalMin = Math.ceil(miembrosNominal / 2);
-    if (presentesNominal < quorumNominalMin) {
+    if (presentesFisicos < quorumNominalMin) {
       throw new BadRequestException(
         'No se puede calcular el resultado porque no se cumple el quorum nominal minimo.',
       );
     }
 
-    const nMitadMiembrosPresente = redondear2(Math.ceil(presentesNominal / 2));
+    const nMitadMiembrosPresente = redondear2(Math.ceil(presentesFisicos / 2));
     const mitadMiembrosPonderado = redondear2(censoPonderado / 2);
     const dosTercerasPonderado = redondear2((2 * censoPonderado) / 3);
     const nDosTercerasMiembros = redondear2((2 * miembrosNominal) / 3);
-    const ausentes = Math.max(miembrosNominal - presentesNominal, 0);
+    const ausentes = ausentesNegocio;
 
     const calculo =
       punto.calculo_resultado === 'mayoria_especial'
