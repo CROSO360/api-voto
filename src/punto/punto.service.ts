@@ -932,7 +932,7 @@ export class PuntoService {
   }
 
 
-  private async _calcularResultadosInterno(
+   async _calcularResultadosInterno(
     id_punto: number,
     id_usuario: number,
     manager: EntityManager,

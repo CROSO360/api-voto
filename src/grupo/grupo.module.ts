@@ -8,9 +8,14 @@ import { PuntoGrupo } from 'src/punto-grupo/punto-grupo.entity';
 import { Sesion } from 'src/sesion/sesion.entity';
 import { PuntoGrupoModule } from 'src/punto-grupo/punto-grupo.module';
 import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
+import { PuntoModule } from 'src/punto/punto.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Grupo, Punto, PuntoGrupo, Sesion, PuntoUsuario]), PuntoGrupoModule],
+  imports: [
+    TypeOrmModule.forFeature([Grupo, Punto, PuntoGrupo, Sesion, PuntoUsuario]),
+    PuntoGrupoModule,
+    PuntoModule,
+  ],
   providers: [GrupoService],
   controllers: [GrupoController],
   exports: [GrupoService],
