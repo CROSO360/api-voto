@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { BaseController } from 'src/commons/commons.controller';
 import { Grupo } from './grupo.entity';
 import { GrupoService } from './grupo.service';
@@ -26,4 +26,9 @@ export class GrupoController extends BaseController<Grupo> {
     return this.grupoService.calcularResultadosGrupo(dto);
   }
 
+  @Post('eliminar/:idGrupo')
+  async eliminarGrupo(@Param('idGrupo', ParseIntPipe) idGrupo: number) {
+    await this.grupoService.eliminarGrupo(idGrupo);
+    return { message: 'Grupo eliminado correctamente.' };
+  }
 }

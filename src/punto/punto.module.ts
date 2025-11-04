@@ -6,6 +6,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { Punto } from './punto.entity';
+import { PuntoGrupo } from 'src/punto-grupo/punto-grupo.entity';
 import { PuntoService } from './punto.service';
 import { PuntoController } from './punto.controller';
 
@@ -22,7 +23,7 @@ import { ResultadoModule } from 'src/resultado/resultado.module';
 @Module({
   imports: [
     // Entidad principal del módulo
-    TypeOrmModule.forFeature([Punto]),
+    TypeOrmModule.forFeature([Punto, PuntoGrupo]),
 
     // Módulos relacionados usados por el servicio
     SesionModule,
@@ -42,7 +43,7 @@ import { ResultadoModule } from 'src/resultado/resultado.module';
   exports: [
     // Exportación del servicio y del repositorio TypeORM
     PuntoService,
-    TypeOrmModule.forFeature([Punto]),
+    TypeOrmModule.forFeature([Punto, PuntoGrupo]),
   ],
 })
 export class PuntoModule {}

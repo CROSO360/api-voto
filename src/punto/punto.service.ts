@@ -22,6 +22,7 @@ import { Punto } from './punto.entity';
 import { Sesion } from 'src/sesion/sesion.entity';
 import { Resolucion } from 'src/resolucion/resolucion.entity';
 import { PuntoUsuario } from 'src/punto-usuario/punto-usuario.entity';
+import { PuntoGrupo } from 'src/punto-grupo/punto-grupo.entity';
 
 import { BaseService } from 'src/commons/commons.service';
 import { CreatePuntoDto } from 'src/auth/dto/create-punto.dto';
@@ -49,6 +50,8 @@ export class PuntoService {
     private readonly resolucionRepo: Repository<Resolucion>,
     @InjectRepository(PuntoUsuario)
     private readonly puntoUsuarioRepo: Repository<PuntoUsuario>,
+    @InjectRepository(PuntoGrupo)
+    private readonly puntoGrupoRepo: Repository<PuntoGrupo>,
     @InjectRepository(Miembro)
     private readonly miembroRepo: Repository<Miembro>,
     private dataSource: DataSource,
@@ -753,6 +756,26 @@ export class PuntoService {
     }
   }
 
+  private async asegurarPuntoSinGrupoActivo(idPunto: number): Promise<void> {
+    const puntoGrupo = await this.puntoGrupoRepo.findOne({
+      where: {
+        punto: { id_punto: idPunto },
+        estado: true,
+        status: true,
+        grupo: { status: true },
+      },
+      relations: ['grupo'],
+    });
+
+    if (puntoGrupo?.grupo) {
+      const identificadorGrupo =
+        puntoGrupo.grupo.nombre ?? `ID ${puntoGrupo.grupo.id_grupo}`;
+      throw new BadRequestException(
+        `El punto pertenece al grupo ${identificadorGrupo}. Resuelva el grupo para calcular sus resultados.`,
+      );
+    }
+  }
+
   // ========================================
   // CÁcalculo AUTOMÁTICO DE RESULTADOS
   // ========================================
@@ -762,6 +785,8 @@ export class PuntoService {
     id_punto: number,
     id_usuario: number,
   ): Promise<void> {
+    await this.asegurarPuntoSinGrupoActivo(id_punto);
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -804,6 +829,8 @@ export class PuntoService {
       ? (fuente_resultado as 'automatico' | 'manual' | 'hibrido')
       : 'manual';
 
+    await this.asegurarPuntoSinGrupoActivo(id_punto);
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -843,6 +870,8 @@ export class PuntoService {
     if (!votos || votos.length === 0) {
       throw new BadRequestException('No se recibieron votos para procesar.');
     }
+
+    await this.asegurarPuntoSinGrupoActivo(idPunto);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();

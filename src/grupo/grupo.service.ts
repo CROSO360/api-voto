@@ -88,6 +88,10 @@ export class GrupoService extends BaseService<Grupo> {
       throw new NotFoundException('Grupo no encontrado');
     }
 
+    if (grupo.status === false) {
+      throw new BadRequestException('El grupo ya fue resuelto.');
+    }
+
     const puntosActivos = (grupo.puntoGrupos ?? []).filter(
       (puntoGrupo) =>
         puntoGrupo.estado !== false &&
@@ -343,6 +347,12 @@ export class GrupoService extends BaseService<Grupo> {
         }
       }
 
+      await queryRunner.manager.update(
+        Grupo,
+        { id_grupo: grupo.id_grupo },
+        { estado: false, status: false },
+      );
+
       await queryRunner.commitTransaction();
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -355,5 +365,46 @@ export class GrupoService extends BaseService<Grupo> {
       where: { id_grupo: grupo.id_grupo },
       relations: ['puntoGrupos', 'puntoGrupos.punto'],
     });
+  }
+
+  async eliminarGrupo(idGrupo: number): Promise<void> {
+    const grupo = await this.grupoRepo.findOne({
+      where: { id_grupo: idGrupo },
+      relations: ['sesion'],
+    });
+
+    if (!grupo) {
+      throw new NotFoundException('Grupo no encontrado');
+    }
+
+    if (grupo.status === false) {
+      throw new BadRequestException('No se puede eliminar un grupo que ya fue resuelto.');
+    }
+
+    if (grupo.sesion?.fase === 'finalizada') {
+      throw new BadRequestException('No se puede eliminar un grupo de una sesión finalizada.');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.manager
+        .createQueryBuilder()
+        .delete()
+        .from(PuntoGrupo)
+        .where('id_grupo = :idGrupo', { idGrupo })
+        .execute();
+
+      await queryRunner.manager.delete(Grupo, { id_grupo: idGrupo });
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }
