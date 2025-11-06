@@ -31,4 +31,12 @@ export class GrupoController extends BaseController<Grupo> {
     await this.grupoService.eliminarGrupo(idGrupo);
     return { message: 'Grupo eliminado correctamente.' };
   }
+
+  @Get('habilitado/:idGrupo')
+  async grupoHabilitado(
+    @Param('idGrupo', ParseIntPipe) idGrupo: number,
+  ) {
+    const habilitado = await this.grupoService.estaHabilitado(idGrupo);
+    return { id_grupo: idGrupo, habilitado };
+  }
 }

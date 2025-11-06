@@ -407,4 +407,21 @@ export class GrupoService extends BaseService<Grupo> {
       await queryRunner.release();
     }
   }
+
+  /**
+   * Devuelve true si el grupo existe y está habilitado (estado = true).
+   * No lanza excepción si no existe: simplemente retorna false,
+   * para que el cliente pueda decidir no enviar el voto.
+   */
+  async estaHabilitado(idGrupo: number): Promise<boolean> {
+    const row = await this.grupoRepo
+      .createQueryBuilder('g')
+      .select(['g.id_grupo', 'g.estado', 'g.status'])
+      .where('g.id_grupo = :idGrupo', { idGrupo })
+      .getOne();
+
+    // Si no existe o está desactivado lógicamente, consideramos no habilitado
+    if (!row) return false;
+    return !!row.estado; // solo validas "estado"; si quieres, puedes añadir && !!row.status
+  }
 }

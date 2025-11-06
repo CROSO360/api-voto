@@ -35,6 +35,10 @@ export class Asistencia {
   @Column()
   tipo_asistencia: string;
 
+  // Indica si es la asistencia principal del usuario en la sesión
+  @Column()
+  es_principal: boolean;
+
   // Define si el registro está activo en el sistema
   @Column()
   estado: boolean;
