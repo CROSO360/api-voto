@@ -44,15 +44,33 @@ export class GrupoService extends BaseService<Grupo> {
     const grupo = this.grupoRepo.create({
       nombre: dto.nombre,
       sesion,
-      estado: true,
+      estado: false,
       status: true,
     });
-
-    const grupoGuardado = await this.grupoRepo.save(grupo);
 
     const puntos = await this.puntoRepository.findByIds(dto.puntos);
     if (puntos.length !== dto.puntos.length) {
       throw new BadRequestException('Uno o mas puntos no existen');
+    }
+
+    if (dto.puntos.length > 0) {
+      const puntosAgrupados = await this.puntoGrupoRepository
+        .createQueryBuilder('pg')
+        .leftJoinAndSelect('pg.punto', 'punto')
+        .where('punto.id_punto IN (:...ids)', { ids: dto.puntos })
+        .andWhere('pg.estado = :estado', { estado: true })
+        .andWhere('pg.status = :status', { status: true })
+        .getMany();
+
+      if (puntosAgrupados.length > 0) {
+        const idsInvalidos = puntosAgrupados
+          .map((pg) => pg.punto?.id_punto)
+          .filter((id): id is number => typeof id === 'number');
+
+        throw new BadRequestException(
+          `No se pueden agrupar puntos que ya pertenecen a otro grupo (${idsInvalidos.join(', ')}).`,
+        );
+      }
     }
 
     const puntosResueltos = puntos.filter((punto) => punto.resultado !== null && punto.resultado !== undefined);
@@ -60,6 +78,8 @@ export class GrupoService extends BaseService<Grupo> {
       throw new BadRequestException('No se pueden agrupar puntos que ya fueron resueltos');
       
     }
+
+    const grupoGuardado = await this.grupoRepo.save(grupo);
 
     const puntoGrupos = dto.puntos.map((idPunto) =>
       this.puntoGrupoRepository.create({
