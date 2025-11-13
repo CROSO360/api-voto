@@ -2,7 +2,7 @@
 // IMPORTACIONES
 // =======================================================
 
-import { Controller } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 
 // =======================================================
 // CONTROLADORES Y SERVICIOS BASE
@@ -30,5 +30,11 @@ export class MiembroController extends BaseController<Miembro> {
 
   getService(): BaseService<Miembro> {
     return this.miembroService;
+  }
+
+  
+  @Get('miembros-reemplazos')
+  async getMiembrosYReemplazos() {
+    return this.miembroService.getMiembrosYReemplazos();
   }
 }

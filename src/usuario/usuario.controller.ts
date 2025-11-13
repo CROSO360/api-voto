@@ -3,6 +3,7 @@
 // ==============================
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -117,6 +118,32 @@ export class UsuarioController {
   @HttpCode(HttpStatus.CREATED)
   async save(@Body() entity: Usuario): Promise<Usuario> {
     return await this.usuarioService.updateUsuario(entity);
+  }
+
+  /**
+   * Actualiza cédula y celular del usuario desde el formulario público.
+   */
+  @Post('actualizar-datos')
+  @HttpCode(HttpStatus.OK)
+  async actualizarDatos(
+    @Body()
+    payload: {
+      id_usuario: number;
+      cedula: string;
+      celular: string;
+    },
+  ): Promise<{ codigo: string }> {
+    if (!payload?.id_usuario) {
+      throw new BadRequestException('El id_usuario es obligatorio.');
+    }
+
+    const codigo = await this.usuarioService.actualizarDatos(
+      Number(payload.id_usuario),
+      payload.cedula,
+      payload.celular,
+    );
+
+    return { codigo };
   }
 
   // ==============================

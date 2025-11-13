@@ -93,6 +93,52 @@ export class UsuarioService {
   }
 
   /**
+   * Actualiza la cédula y el celular de un usuario y retorna su código.
+   */
+  async actualizarDatos(
+    idUsuario: number,
+    cedula: string,
+    celular: string,
+  ): Promise<string> {
+    if (!cedula) {
+      throw new BadRequestException('La cédula es obligatoria.');
+    }
+
+    if (!celular) {
+      throw new BadRequestException('El celular es obligatorio.');
+    }
+
+    const encryptionKey = process.env.ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error('ENCRYPTION_KEY no está definida en el entorno.');
+    }
+
+    const usuario = await this.usuarioRepo.findOne({
+      where: { id_usuario: idUsuario },
+    });
+
+    if (!usuario) {
+      throw new BadRequestException('Usuario no encontrado.');
+    }
+
+    if (await this.isCedulaDuplicada(cedula, idUsuario)) {
+      throw new BadRequestException('Ya existe un usuario con esta cédula.');
+    }
+
+    const cedulaEncriptada = CryptoJS.AES.encrypt(
+      cedula,
+      encryptionKey,
+    ).toString();
+
+    await this.usuarioRepo.update(idUsuario, {
+      cedula: cedulaEncriptada,
+      celular,
+    });
+
+    return usuario.codigo;
+  }
+
+  /**
    * Actualiza un usuario, con re-encriptación de cédula si ha cambiado.
    */
   /**

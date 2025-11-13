@@ -46,6 +46,9 @@ export class Usuario {
   cedula: string; // Cédula encriptada
 
   @Column()
+  celular: string;
+
+  @Column()
   contrasena: string; // Contraseña con hash bcrypt
 
   @Column()
